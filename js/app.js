@@ -636,48 +636,49 @@ async function sendMessage() {
     return;
   }
 
-  const message =
-    $("message").value.trim();
+  const input = $("message");
+  const message = input.value.trim();
 
   if (!message) return;
 
-  const {
-    data,
-    error
-  } = await supabaseClient
-    .from("safe_messages")
-    .insert({
-      sender_id: myUserId,
-      receiver_id: friend.id,
-      message_type: "text",
-      content: message
-    })
-    .select()
-    .single();
+  console.log("SENDING MESSAGE:", message);
+  console.log("MY ID:", myUserId);
+  console.log("FRIEND ID:", friend.id);
+
+  const { error } =
+    await supabaseClient
+      .from("safe_messages")
+      .insert({
+        sender_id: myUserId,
+        receiver_id: friend.id,
+        message_type: "text",
+        content: message
+      });
 
   if (error) {
 
     console.error(
-      "Send message error:",
+      "SEND ERROR:",
       error
     );
 
-    alert(error.message);
+    $("connectStatus").textContent =
+      "Send error: " + error.message;
+
     return;
   }
 
-  console.log(
-    "MESSAGE SENT:",
-    data
-  );
+  console.log("MESSAGE SAVED");
 
-  $("message").value = "";
+  input.value = "";
 
-  // Immediately refresh this conversation
+  // Show the sent message immediately
   await loadMessages();
+
 }
+      
 
-
+  
 
 
 
