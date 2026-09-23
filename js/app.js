@@ -378,43 +378,70 @@ async function startAnonymousSession() {
       "warn"
     );
 
+    $("connectStatus").textContent =
+      "Supabase client was not created.";
+
     return null;
+  }
+
+  try {
+
+    const {
+      data,
+      error
+    } =
+      await supabaseClient.auth
+        .signInAnonymously();
+
+    if (error) {
+
+      console.error(
+        "SUPABASE ERROR:",
+        error
+      );
+
+      setConnection(
+        "Backend error",
+        "warn"
+      );
+
+      $("connectStatus").textContent =
+        "Supabase: " +
+        error.message;
+
+      return null;
+    }
+
+    setConnection(
+      "Online",
+      "ok"
+    );
+
+    $("connectStatus").textContent =
+      "Supabase connected.";
+
+    return data.user;
 
   }
 
+  catch (error) {
 
-  const {
-    data,
-    error
-  } =
-    await supabaseClient.auth
-      .signInAnonymously();
+    console.error(
+      "SUPABASE EXCEPTION:",
+      error
+    );
 
+    setConnection(
+      "Backend error",
+      "warn"
+    );
 
-  if (error) {
+    $("connectStatus").textContent =
+      "Supabase: " +
+      error.message;
 
-  console.error("Supabase Anonymous Login Error:", error);
-
-  setConnection(
-    "Backend error",
-    "warn"
-  );
-
-  $("connectStatus").textContent =
-    "Supabase: " + error.message;
-
-  return null;
-
+    return null;
   }
-
-  setConnection(
-    "Online",
-    "ok"
-  );
-
-
-  return data.user;
-
 }
 
 
