@@ -393,17 +393,19 @@ async function startAnonymousSession() {
 
   if (error) {
 
-    console.error(error);
+  console.error("Supabase Anonymous Login Error:", error);
 
-    setConnection(
-      "Backend error",
-      "warn"
-    );
+  setConnection(
+    "Backend error",
+    "warn"
+  );
 
-    return null;
+  $("connectStatus").textContent =
+    "Supabase: " + error.message;
+
+  return null;
 
   }
-
 
   setConnection(
     "Online",
