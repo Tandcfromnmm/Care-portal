@@ -663,7 +663,7 @@ async function sendMessage() {
 
   $("message")
     .value = "";
-
+await loadMessages();
 }
 
 
@@ -865,6 +865,15 @@ function subscribeMessages() {
       });
 
 }
+
+
+setInterval(() => {
+
+  if (friend && supabaseClient) {
+    loadMessages();
+  }
+
+}, 3000);
 
 
 /* =========================
