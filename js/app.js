@@ -1167,10 +1167,6 @@ async function loadMessages() {
 
     /*
       One query for BOTH directions.
-
-      This is simpler and more reliable
-      than running separate sent/received
-      queries.
     */
 
     const {
@@ -1215,9 +1211,18 @@ async function loadMessages() {
     );
 
 
+    /*
+      Clear existing messages
+      before rebuilding the chat.
+    */
+
     $("messages").innerHTML =
       "";
 
+
+    /*
+      No messages yet.
+    */
 
     if (
       !data ||
@@ -1238,14 +1243,37 @@ async function loadMessages() {
     }
 
 
-    data.forEach(
-      displayMessage
+    /*
+      IMPORTANT:
+      displayMessage() is now async
+      because voice messages need a
+      Supabase signed URL.
+
+      Wait for every message to finish
+      displaying.
+    */
+
+    await Promise.all(
+      data.map(
+        message =>
+          displayMessage(
+            message
+          )
+      )
     );
 
+
+    /*
+      Scroll to the newest message.
+    */
 
     $("messages").scrollTop =
       $("messages").scrollHeight;
 
+
+    /*
+      Update status.
+    */
 
     $("connectStatus").textContent =
       "Messages loaded: " +
@@ -1269,10 +1297,8 @@ async function loadMessages() {
 
 }
 
+    
 
-/* =========================================================
-   DISPLAY MESSAGE
-========================================================= */
 /* =========================
    DISPLAY MESSAGE
 ========================= */
