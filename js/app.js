@@ -169,15 +169,13 @@ const map =
     );
 
 
-L.tileLayer(
-  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  {
-    maxZoom: 19,
 
-    attribution:
-      "&copy; OpenStreetMap"
-  }
-).addTo(map);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            attribution: '&copy; Sponsored by- <a href="https://tastyandcomfort.github.io/T-C/" target="_blank" rel="noopener">Murali Manohar</a>',
+                            maxZoom: 19
+                        }).addTo(Map);
+
 
 
 nearbyLayer =
