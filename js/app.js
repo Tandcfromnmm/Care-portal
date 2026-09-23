@@ -785,26 +785,12 @@ async function loadMessages() {
 /* =========================
    DISPLAY MESSAGE
 ========================= */
-
-function displayMessage(
-  message
-) {
+function displayMessage(message) {
 
   const div =
-    document.createElement(
-      "div"
-    );
+    document.createElement("div");
 
-
-  div.className =
-    "bubble " +
-    (
-      message.sender_id ===
-      myUserId
-        ? "me"
-        : "them"
-    );
-
+  div.className = "bubble";
 
   if (
     message.message_type ===
@@ -812,43 +798,33 @@ function displayMessage(
   ) {
 
     const link =
-      document.createElement(
-        "a"
-      );
-
+      document.createElement("a");
 
     link.href =
       `https://www.openstreetmap.org/?mlat=${message.latitude}&mlon=${message.longitude}`;
 
-
-    link.target =
-      "_blank";
-
+    link.target = "_blank";
 
     link.textContent =
       "📍 Shared location";
 
+    div.appendChild(link);
 
-    div.appendChild(
-      link
-    );
-
-  }
-
-  else {
+  } else {
 
     div.textContent =
-      message.content ||
-      "";
+      "TEST MESSAGE: " +
+      (message.content || "");
 
   }
 
-
   $("messages")
-    .appendChild(
-      div
-    );
+    .appendChild(div);
 
+  console.log(
+    "DISPLAYED:",
+    message.content
+  );
 }
 
 
