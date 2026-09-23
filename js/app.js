@@ -600,6 +600,14 @@ async function connectToUser() {
 
   await loadMessages();
 
+  setInterval(() => {
+
+  if (friend && supabaseClient) {
+    loadMessages();
+  }
+
+}, 3000);
+
 }
 
 
@@ -696,57 +704,83 @@ $("message")
 
 async function loadMessages() {
 
-  if (!friend)
+  if (!friend || !supabaseClient)
     return;
 
+  try {
 
-  const {
-    data,
-    error
-  } =
-    await supabaseClient
-      .from("safe_messages")
-      .select("*")
-      .or(
-        `and(sender_id.eq.${myUserId},receiver_id.eq.${friend.id}),and(sender_id.eq.${friend.id},receiver_id.eq.${myUserId})`
-      )
-      .order(
-        "created_at",
-        {
-          ascending:
-            true
-        }
-      );
+    const sentResult =
+      await supabaseClient
+        .from("safe_messages")
+        .select("*")
+        .eq("sender_id", myUserId)
+        .eq("receiver_id", friend.id)
+        .order("created_at", {
+          ascending: true
+        });
 
 
-  if (error) {
+    const receivedResult =
+      await supabaseClient
+        .from("safe_messages")
+        .select("*")
+        .eq("sender_id", friend.id)
+        .eq("receiver_id", myUserId)
+        .order("created_at", {
+          ascending: true
+        });
 
-    $("messages")
-      .innerHTML =
-      "<div class='muted'>" +
-      error.message +
-      "</div>";
 
-    return;
+    if (sentResult.error)
+      throw sentResult.error;
+
+    if (receivedResult.error)
+      throw receivedResult.error;
+
+
+    const messages = [
+      ...(sentResult.data || []),
+      ...(receivedResult.data || [])
+    ];
+
+
+    messages.sort(
+      (a, b) =>
+        new Date(a.created_at) -
+        new Date(b.created_at)
+    );
+
+
+    $("messages").innerHTML = "";
+
+
+    messages.forEach(
+      displayMessage
+    );
+
+
+    $("messages").scrollTop =
+      $("messages").scrollHeight;
+
+
   }
 
+  catch (error) {
 
-  $("messages")
-    .innerHTML = "";
+    console.error(
+      "Load messages error:",
+      error
+    );
 
+    $("messages").innerHTML =
+      `<div class="muted">
+        Unable to load messages.
+        ${error.message}
+      </div>`;
 
-  data.forEach(
-    displayMessage
-  );
+  }
 
-
-  $("messages")
-    .scrollTop =
-    $("messages")
-      .scrollHeight;
-
-}
-
+      }
 
 /* =========================
    DISPLAY MESSAGE
