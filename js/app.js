@@ -701,11 +701,11 @@ $("message")
 /* =========================
    LOAD MESSAGES
 ========================= */
-
 async function loadMessages() {
 
-  if (!friend || !supabaseClient)
+  if (!friend || !supabaseClient) {
     return;
+  }
 
   try {
 
@@ -719,7 +719,6 @@ async function loadMessages() {
           ascending: true
         });
 
-
     const receivedResult =
       await supabaseClient
         .from("safe_messages")
@@ -730,19 +729,27 @@ async function loadMessages() {
           ascending: true
         });
 
+    console.log("MY USER ID:", myUserId);
+    console.log("FRIEND ID:", friend.id);
+    console.log("SENT:", sentResult);
+    console.log("RECEIVED:", receivedResult);
 
-    if (sentResult.error)
-      throw sentResult.error;
+    if (sentResult.error) {
+      $("connectStatus").textContent =
+        "Message error: " + sentResult.error.message;
+      return;
+    }
 
-    if (receivedResult.error)
-      throw receivedResult.error;
-
+    if (receivedResult.error) {
+      $("connectStatus").textContent =
+        "Receive error: " + receivedResult.error.message;
+      return;
+    }
 
     const messages = [
       ...(sentResult.data || []),
       ...(receivedResult.data || [])
     ];
-
 
     messages.sort(
       (a, b) =>
@@ -750,37 +757,30 @@ async function loadMessages() {
         new Date(b.created_at)
     );
 
-
     $("messages").innerHTML = "";
 
-
-    messages.forEach(
-      displayMessage
-    );
-
+    messages.forEach(displayMessage);
 
     $("messages").scrollTop =
       $("messages").scrollHeight;
 
+    $("connectStatus").textContent =
+      "Messages loaded: " + messages.length;
 
   }
 
   catch (error) {
 
-    console.error(
-      "Load messages error:",
-      error
-    );
+    console.error(error);
 
-    $("messages").innerHTML =
-      `<div class="muted">
-        Unable to load messages.
-        ${error.message}
-      </div>`;
+    $("connectStatus").textContent =
+      "Message error: " + error.message;
 
   }
+}
 
-      }
+
+  
 
 /* =========================
    DISPLAY MESSAGE
