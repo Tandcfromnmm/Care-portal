@@ -1,17 +1,12 @@
+/* =========================================================
+   SAFE ROUTE - PHASE 1
+   Communication + Maps + Route Advisory + Emergency Help
+========================================================= */
 
-// interval
-setInterval(() => {
 
-  if (
-    friend &&
-    supabaseClient
-  ) {
-    loadMessages();
-  }
-
-}, 3000);
-
-//checkcheck
+/* =========================================================
+   CONFIGURATION
+========================================================= */
 
 const CONFIG =
   window.SAFE_ROUTE_CONFIG || {};
@@ -32,9 +27,45 @@ const supabaseClient =
     : null;
 
 
-/* =========================
-   TEMPORARY SAFE ROUTE ID
-========================= */
+/* =========================================================
+   HELPERS
+========================================================= */
+
+const $ =
+  id =>
+    document.getElementById(id);
+
+
+function status(text) {
+
+  if ($("mapStatus")) {
+    $("mapStatus").textContent = text;
+  }
+
+}
+
+
+function setConnection(
+  text,
+  type = ""
+) {
+
+  if ($("connection")) {
+
+    $("connection").textContent =
+      text;
+
+    $("connection").className =
+      "badge " + type;
+
+  }
+
+}
+
+
+/* =========================================================
+   SAFE ROUTE ID
+========================================================= */
 
 function generateSafeId() {
 
@@ -55,6 +86,7 @@ function generateSafeId() {
   }
 
   return result;
+
 }
 
 
@@ -77,15 +109,17 @@ if (!mySafeId) {
 }
 
 
-document.getElementById(
-  "mySafeId"
-).textContent =
-  mySafeId;
+if ($("mySafeId")) {
+
+  $("mySafeId").textContent =
+    mySafeId;
+
+}
 
 
-/* =========================
+/* =========================================================
    USER STATE
-========================= */
+========================================================= */
 
 let myUserId =
   localStorage.getItem(
@@ -132,42 +166,12 @@ let recordedChunks = [];
 
 let voiceBlob = null;
 
-
-/* =========================
-   HELPERS
-========================= */
-
-const $ =
-  id =>
-    document.getElementById(id);
+let messagePoller = null;
 
 
-function status(text) {
-
-  $("mapStatus")
-    .textContent = text;
-
-}
-
-
-function setConnection(
-  text,
-  type = ""
-) {
-
-  $("connection")
-    .textContent = text;
-
-  $("connection")
-    .className =
-      "badge " + type;
-
-}
-
-
-/* =========================
+/* =========================================================
    MAP
-========================= */
+========================================================= */
 
 const map =
   L.map("map")
@@ -193,9 +197,9 @@ nearbyLayer =
    .addTo(map);
 
 
-/* =========================
+/* =========================================================
    GPS
-========================= */
+========================================================= */
 
 function locate() {
 
@@ -306,6 +310,11 @@ function locate() {
 
       error => {
 
+        console.error(
+          "GPS ERROR:",
+          error
+        );
+
         status(
           "Location permission denied or unavailable."
         );
@@ -328,61 +337,69 @@ function locate() {
 }
 
 
-$("locateBtn")
-  .onclick =
-  locate;
+if ($("locateBtn")) {
+
+  $("locateBtn")
+    .onclick =
+    locate;
+
+}
 
 
-/* =========================
+/* =========================================================
    COPY SAFE ID
-========================= */
+========================================================= */
 
-$("copyId")
-  .onclick =
-  async () => {
+if ($("copyId")) {
 
-    try {
+  $("copyId")
+    .onclick =
+    async () => {
 
-      await navigator
-        .clipboard
-        .writeText(
+      try {
+
+        await navigator
+          .clipboard
+          .writeText(
+            mySafeId
+          );
+
+
+        $("copyId")
+          .textContent =
+          "✓ ID Copied";
+
+
+        setTimeout(
+          () => {
+
+            $("copyId")
+              .textContent =
+              "📋 Copy my ID";
+
+          },
+          1500
+        );
+
+      }
+
+      catch {
+
+        alert(
+          "Your Safe Route ID: " +
           mySafeId
         );
 
+      }
 
-      $("copyId")
-        .textContent =
-        "✓ ID Copied";
+    };
 
-
-      setTimeout(
-        () => {
-
-          $("copyId")
-            .textContent =
-            "📋 Copy my ID";
-
-        },
-        1500
-      );
-
-    }
-
-    catch {
-
-      alert(
-        "Your Safe Route ID: " +
-        mySafeId
-      );
-
-    }
-
-  };
+}
 
 
-/* =========================
+/* =========================================================
    SUPABASE ANONYMOUS SESSION
-========================= */
+========================================================= */
 
 async function startAnonymousSession() {
 
@@ -393,11 +410,16 @@ async function startAnonymousSession() {
       "warn"
     );
 
-    $("connectStatus").textContent =
-      "Supabase client was not created.";
+    if ($("connectStatus")) {
+
+      $("connectStatus").textContent =
+        "Supabase client was not created.";
+
+    }
 
     return null;
   }
+
 
   try {
 
@@ -408,6 +430,7 @@ async function startAnonymousSession() {
       await supabaseClient.auth
         .signInAnonymously();
 
+
     if (error) {
 
       console.error(
@@ -415,25 +438,38 @@ async function startAnonymousSession() {
         error
       );
 
+
       setConnection(
         "Backend error",
         "warn"
       );
 
-      $("connectStatus").textContent =
-        "Supabase: " +
-        error.message;
+
+      if ($("connectStatus")) {
+
+        $("connectStatus").textContent =
+          "Supabase: " +
+          error.message;
+
+      }
 
       return null;
     }
+
 
     setConnection(
       "Online",
       "ok"
     );
 
-    $("connectStatus").textContent =
-      "Supabase connected.";
+
+    if ($("connectStatus")) {
+
+      $("connectStatus").textContent =
+        "Supabase connected.";
+
+    }
+
 
     return data.user;
 
@@ -446,36 +482,50 @@ async function startAnonymousSession() {
       error
     );
 
+
     setConnection(
       "Backend error",
       "warn"
     );
 
-    $("connectStatus").textContent =
-      "Supabase: " +
-      error.message;
+
+    if ($("connectStatus")) {
+
+      $("connectStatus").textContent =
+        "Supabase: " +
+        error.message;
+
+    }
 
     return null;
+
   }
+
 }
 
 
-/* =========================
-   REGISTER TEMP ID
-========================= */
+/* =========================================================
+   REGISTER SAFE ID
+========================================================= */
 
 async function registerSafeId() {
 
-  if (!supabaseClient)
+  if (!supabaseClient) {
+
     return;
+
+  }
 
 
   const user =
     await startAnonymousSession();
 
 
-  if (!user)
+  if (!user) {
+
     return;
+
+  }
 
 
   myUserId =
@@ -488,24 +538,47 @@ async function registerSafeId() {
   );
 
 
-  await supabaseClient
-    .from("safe_users")
-    .upsert(
-      {
-        id:
-          myUserId,
+  const {
+    error
+  } =
+    await supabaseClient
+      .from("safe_users")
+      .upsert(
+        {
+          id:
+            myUserId,
 
-        safe_id:
-          mySafeId,
+          safe_id:
+            mySafeId,
 
-        last_seen:
-          new Date().toISOString()
-      },
-      {
-        onConflict:
-          "safe_id"
-      }
+          last_seen:
+            new Date().toISOString()
+        },
+        {
+          onConflict:
+            "safe_id"
+        }
+      );
+
+
+  if (error) {
+
+    console.error(
+      "SAFE USER REGISTER ERROR:",
+      error
     );
+
+    if ($("connectStatus")) {
+
+      $("connectStatus").textContent =
+        "Registration error: " +
+        error.message;
+
+    }
+
+    return;
+
+  }
 
 
   subscribeMessages();
@@ -515,13 +588,17 @@ async function registerSafeId() {
 }
 
 
-/* =========================
-   CONNECT TO USER
-========================= */
+/* =========================================================
+   CONNECT TO ANOTHER USER
+========================================================= */
 
-$("connectBtn")
-  .onclick =
-  connectToUser;
+if ($("connectBtn")) {
+
+  $("connectBtn")
+    .onclick =
+    connectToUser;
+
+}
 
 
 async function connectToUser() {
@@ -540,6 +617,7 @@ async function connectToUser() {
       "Enter a Safe Route ID.";
 
     return;
+
   }
 
 
@@ -550,6 +628,7 @@ async function connectToUser() {
       "You cannot connect to your own ID.";
 
     return;
+
   }
 
 
@@ -560,7 +639,13 @@ async function connectToUser() {
       "Configure Supabase first.";
 
     return;
+
   }
+
+
+  $("connectStatus")
+    .textContent =
+    "Finding user...";
 
 
   const {
@@ -581,11 +666,18 @@ async function connectToUser() {
 
   if (error) {
 
+    console.error(
+      "CONNECT ERROR:",
+      error
+    );
+
     $("connectStatus")
       .textContent =
+      "Connection error: " +
       error.message;
 
     return;
+
   }
 
 
@@ -596,6 +688,7 @@ async function connectToUser() {
       "User not found or no longer online.";
 
     return;
+
   }
 
 
@@ -615,45 +708,132 @@ async function connectToUser() {
 
   await loadMessages();
 
-  setInterval(() => {
 
-  if (friend && supabaseClient) {
-    loadMessages();
+  /*
+    Start ONE polling timer only.
+    If a previous timer exists,
+    clear it first.
+  */
+
+  if (messagePoller) {
+
+    clearInterval(
+      messagePoller
+    );
+
   }
 
-}, 3000);
+
+  messagePoller =
+    setInterval(
+      () => {
+
+        if (
+          friend &&
+          supabaseClient
+        ) {
+
+          loadMessages();
+
+        }
+
+      },
+      3000
+    );
 
 }
 
 
-/* =========================
-   MESSAGES
-========================= */
+/* =========================================================
+   SEND TEXT MESSAGE
+========================================================= */
+
 async function sendMessage() {
 
   if (!friend) {
-    alert("Connect to a Safe Route user first.");
+
+    alert(
+      "Connect to a Safe Route user first."
+    );
+
     return;
+
   }
 
-  const input = $("message");
-  const message = input.value.trim();
 
-  if (!message) return;
+  const input =
+    $("message");
 
-  console.log("SENDING MESSAGE:", message);
-  console.log("MY ID:", myUserId);
-  console.log("FRIEND ID:", friend.id);
 
-  const { error } =
+  const message =
+    input.value.trim();
+
+
+  if (!message) {
+
+    return;
+
+  }
+
+
+  if (!supabaseClient) {
+
+    $("connectStatus")
+      .textContent =
+      "Supabase is not connected.";
+
+    return;
+
+  }
+
+
+  console.log(
+    "SENDING MESSAGE:",
+    message
+  );
+
+
+  console.log(
+    "MY ID:",
+    myUserId
+  );
+
+
+  console.log(
+    "FRIEND ID:",
+    friend.id
+  );
+
+
+  $("connectStatus")
+    .textContent =
+    "Sending...";
+
+
+  const {
+    data,
+    error
+  } =
     await supabaseClient
       .from("safe_messages")
-      .insert({
-        sender_id: myUserId,
-        receiver_id: friend.id,
-        message_type: "text",
-        content: message
-      });
+      .insert(
+        {
+          sender_id:
+            myUserId,
+
+          receiver_id:
+            friend.id,
+
+          message_type:
+            "text",
+
+          content:
+            message
+        }
+      )
+      .select()
+      .single();
+
 
   if (error) {
 
@@ -662,34 +842,97 @@ async function sendMessage() {
       error
     );
 
-    $("connectStatus").textContent =
-      "Send error: " + error.message;
+
+    $("connectStatus")
+      .textContent =
+      "Send error: " +
+      error.message;
 
     return;
+
   }
 
-  console.log("MESSAGE SAVED");
+
+  console.log(
+    "MESSAGE SAVED:",
+    data
+  );
+
 
   input.value = "";
 
-  // Show the sent message immediately
+
+  /*
+    Reload immediately so
+    sender sees the message.
+  */
+
   await loadMessages();
 
+
+  $("connectStatus")
+    .textContent =
+    "✓ Message sent";
+
 }
-      
-
-  
 
 
+/* =========================================================
+   SEND BUTTON
+========================================================= */
 
-/* =========================
+if ($("send")) {
+
+  $("send")
+    .onclick =
+    sendMessage;
+
+}
+
+
+/* =========================================================
+   ENTER KEY SEND
+========================================================= */
+
+if ($("message")) {
+
+  $("message")
+    .addEventListener(
+      "keydown",
+      event => {
+
+        if (
+          event.key === "Enter" &&
+          !event.shiftKey
+        ) {
+
+          event.preventDefault();
+
+          sendMessage();
+
+        }
+
+      }
+    );
+
+}
+
+
+/* =========================================================
    LOAD MESSAGES
-========================= */
+========================================================= */
+
 async function loadMessages() {
 
-  if (!friend || !supabaseClient) {
+  if (
+    !friend ||
+    !supabaseClient
+  ) {
+
     return;
+
   }
+
 
   try {
 
@@ -697,84 +940,203 @@ async function loadMessages() {
       await supabaseClient
         .from("safe_messages")
         .select("*")
-        .eq("sender_id", myUserId)
-        .eq("receiver_id", friend.id)
-        .order("created_at", {
-          ascending: true
-        });
+        .eq(
+          "sender_id",
+          myUserId
+        )
+        .eq(
+          "receiver_id",
+          friend.id
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              true
+          }
+        );
+
 
     const receivedResult =
       await supabaseClient
         .from("safe_messages")
         .select("*")
-        .eq("sender_id", friend.id)
-        .eq("receiver_id", myUserId)
-        .order("created_at", {
-          ascending: true
-        });
+        .eq(
+          "sender_id",
+          friend.id
+        )
+        .eq(
+          "receiver_id",
+          myUserId
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              true
+          }
+        );
 
-    console.log("MY USER ID:", myUserId);
-    console.log("FRIEND ID:", friend.id);
-    console.log("SENT:", sentResult);
-    console.log("RECEIVED:", receivedResult);
+
+    console.log(
+      "MY USER ID:",
+      myUserId
+    );
+
+
+    console.log(
+      "FRIEND ID:",
+      friend.id
+    );
+
+
+    console.log(
+      "SENT:",
+      sentResult
+    );
+
+
+    console.log(
+      "RECEIVED:",
+      receivedResult
+    );
+
 
     if (sentResult.error) {
-      $("connectStatus").textContent =
-        "Message error: " + sentResult.error.message;
+
+      console.error(
+        "SENT MESSAGE ERROR:",
+        sentResult.error
+      );
+
+
+      $("connectStatus")
+        .textContent =
+        "Message error: " +
+        sentResult.error.message;
+
       return;
+
     }
+
 
     if (receivedResult.error) {
-      $("connectStatus").textContent =
-        "Receive error: " + receivedResult.error.message;
+
+      console.error(
+        "RECEIVED MESSAGE ERROR:",
+        receivedResult.error
+      );
+
+
+      $("connectStatus")
+        .textContent =
+        "Receive error: " +
+        receivedResult.error.message;
+
       return;
+
     }
 
+
     const messages = [
+
       ...(sentResult.data || []),
+
       ...(receivedResult.data || [])
+
     ];
+
 
     messages.sort(
       (a, b) =>
-        new Date(a.created_at) -
-        new Date(b.created_at)
+        new Date(
+          a.created_at
+        ) -
+        new Date(
+          b.created_at
+        )
     );
 
-    $("messages").innerHTML = "";
 
-    messages.forEach(displayMessage);
+    $("messages")
+      .innerHTML = "";
 
-    $("messages").scrollTop =
-      $("messages").scrollHeight;
 
-    $("connectStatus").textContent =
-      "Messages loaded: " + messages.length;
+    if (!messages.length) {
+
+      $("messages")
+        .innerHTML =
+        `<div class="muted">
+          No messages yet.
+        </div>`;
+
+    }
+
+
+    messages.forEach(
+      displayMessage
+    );
+
+
+    $("messages")
+      .scrollTop =
+      $("messages")
+        .scrollHeight;
+
+
+    $("connectStatus")
+      .textContent =
+      "Messages loaded: " +
+      messages.length;
 
   }
 
   catch (error) {
 
-    console.error(error);
+    console.error(
+      "LOAD MESSAGE EXCEPTION:",
+      error
+    );
 
-    $("connectStatus").textContent =
-      "Message error: " + error.message;
+
+    $("connectStatus")
+      .textContent =
+      "Message error: " +
+      error.message;
 
   }
+
 }
 
 
-  
-
-/* =========================
+/* =========================================================
    DISPLAY MESSAGE
-========================= */
-function displayMessage(message) {
+========================================================= */
+
+function displayMessage(
+  message
+) {
 
   const div =
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
 
-  div.className = "bubble";
+
+  /*
+    Proper left/right
+    message appearance.
+  */
+
+  div.className =
+    "bubble " +
+    (
+      message.sender_id ===
+      myUserId
+        ? "me"
+        : "them"
+    );
+
 
   if (
     message.message_type ===
@@ -782,78 +1144,198 @@ function displayMessage(message) {
   ) {
 
     const link =
-      document.createElement("a");
+      document.createElement(
+        "a"
+      );
+
 
     link.href =
       `https://www.openstreetmap.org/?mlat=${message.latitude}&mlon=${message.longitude}`;
 
-    link.target = "_blank";
+
+    link.target =
+      "_blank";
+
+
+    link.rel =
+      "noopener";
+
 
     link.textContent =
       "📍 Shared location";
 
-    div.appendChild(link);
 
-  } else {
+    link.style.color =
+      "white";
 
-    div.textContent =
-      "TEST MESSAGE: " +
-      (message.content || "");
+
+    div.appendChild(
+      link
+    );
 
   }
 
+  else if (
+    message.message_type ===
+    "voice"
+  ) {
+
+    const audio =
+      document.createElement(
+        "audio"
+      );
+
+
+    audio.controls =
+      true;
+
+
+    audio.className =
+      "audio";
+
+
+    if (
+      message.media_path
+    ) {
+
+      const {
+        data,
+        error
+      } =
+        supabaseClient
+          .storage
+          .from(
+            "voice-messages"
+          )
+          .getPublicUrl(
+            message.media_path
+          );
+
+
+      if (!error) {
+
+        audio.src =
+          data.publicUrl;
+
+      }
+
+    }
+
+
+    div.appendChild(
+      audio
+    );
+
+  }
+
+  else {
+
+    div.textContent =
+      message.content ||
+      "";
+
+  }
+
+
+  const time =
+    document.createElement(
+      "time"
+    );
+
+
+  time.textContent =
+    new Date(
+      message.created_at
+    ).toLocaleTimeString(
+      [],
+      {
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit"
+      }
+    );
+
+
+  div.appendChild(
+    time
+  );
+
+
   $("messages")
-    .appendChild(div);
+    .appendChild(
+      div
+    );
+
 
   console.log(
     "DISPLAYED:",
     message.content
   );
+
 }
 
 
-/* =========================
+/* =========================================================
    REALTIME MESSAGES
-========================= */
+========================================================= */
 
 function subscribeMessages() {
 
-  if (!supabaseClient) return;
+  if (!supabaseClient) {
+
+    return;
+
+  }
+
 
   if (messageChannel) {
-    supabaseClient.removeChannel(
-      messageChannel
-    );
+
+    supabaseClient
+      .removeChannel(
+        messageChannel
+      );
+
   }
+
 
   messageChannel =
     supabaseClient
       .channel(
         "messages-" +
-        myUserId +
-        "-" +
-        Date.now()
+        myUserId
       )
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
-          schema: "public",
-          table: "safe_messages"
+          event:
+            "INSERT",
+
+          schema:
+            "public",
+
+          table:
+            "safe_messages"
         },
         payload => {
 
           console.log(
-            "NEW MESSAGE RECEIVED:",
+            "NEW MESSAGE REALTIME:",
             payload.new
           );
+
 
           const message =
             payload.new;
 
+
           if (
-            message.receiver_id === myUserId ||
-            message.sender_id === myUserId
+            message.receiver_id ===
+              myUserId ||
+
+            message.sender_id ===
+              myUserId
           ) {
 
             loadMessages();
@@ -872,314 +1354,366 @@ function subscribeMessages() {
 
         }
       );
+
 }
 
 
-/* =========================
-   LOCATION SHARE
-========================= */
+/* =========================================================
+   SHARE LOCATION
+========================================================= */
 
-$("shareLocation")
-  .onclick =
-  async () => {
+if ($("shareLocation")) {
 
-    if (!friend) {
+  $("shareLocation")
+    .onclick =
+    async () => {
 
-      alert(
-        "Connect to a user first."
-      );
+      if (!friend) {
 
-      return;
-    }
-
-
-    if (!myPosition) {
-
-      locate();
-
-      alert(
-        "Please allow GPS and try again."
-      );
-
-      return;
-    }
-
-
-    const {
-      error
-    } =
-      await supabaseClient
-        .from("safe_messages")
-        .insert({
-
-          sender_id:
-            myUserId,
-
-          receiver_id:
-            friend.id,
-
-          message_type:
-            "location",
-
-          latitude:
-            myPosition.lat,
-
-          longitude:
-            myPosition.lon
-
-        });
-
-
-    $("shareStatus")
-      .textContent =
-      error
-        ? error.message
-        : "✓ Location shared.";
-
-  };
-
-
-/* =========================
-   VOICE RECORDING
-========================= */
-
-$("record")
-  .onclick =
-  async () => {
-
-    if (!friend) {
-
-      alert(
-        "Connect to a user first."
-      );
-
-      return;
-    }
-
-
-    if (
-      recorder &&
-      recorder.state ===
-        "recording"
-    ) {
-
-      recorder.stop();
-
-      return;
-
-    }
-
-
-    try {
-
-      const microphone =
-        await navigator
-          .mediaDevices
-          .getUserMedia({
-            audio:
-              true
-          });
-
-
-      recordedChunks = [];
-
-
-      recorder =
-        new MediaRecorder(
-          microphone
+        alert(
+          "Connect to a user first."
         );
 
+        return;
 
-      recorder.ondataavailable =
-        event => {
-
-          if (
-            event.data.size
-          ) {
-
-            recordedChunks
-              .push(
-                event.data
-              );
-
-          }
-
-        };
+      }
 
 
-      recorder.onstop =
-        () => {
+      if (!myPosition) {
 
-          microphone
-            .getTracks()
-            .forEach(
-              track =>
-                track.stop()
-            );
+        locate();
+
+        alert(
+          "Please allow GPS and try again."
+        );
+
+        return;
+
+      }
 
 
-          voiceBlob =
-            new Blob(
-              recordedChunks,
+      const {
+        error
+      } =
+        await supabaseClient
+          .from(
+            "safe_messages"
+          )
+          .insert(
+            {
+
+              sender_id:
+                myUserId,
+
+              receiver_id:
+                friend.id,
+
+              message_type:
+                "location",
+
+              latitude:
+                myPosition.lat,
+
+              longitude:
+                myPosition.lon
+
+            }
+          );
+
+
+      if ($("shareStatus")) {
+
+        $("shareStatus")
+          .textContent =
+          error
+            ? error.message
+            : "✓ Location shared.";
+
+      }
+
+
+      if (!error) {
+
+        await loadMessages();
+
+      }
+
+    };
+
+}
+
+
+/* =========================================================
+   VOICE RECORDING
+========================================================= */
+
+if ($("record")) {
+
+  $("record")
+    .onclick =
+    async () => {
+
+      if (!friend) {
+
+        alert(
+          "Connect to a user first."
+        );
+
+        return;
+
+      }
+
+
+      if (
+        recorder &&
+        recorder.state ===
+          "recording"
+      ) {
+
+        recorder.stop();
+
+        return;
+
+      }
+
+
+      try {
+
+        const microphone =
+          await navigator
+            .mediaDevices
+            .getUserMedia(
               {
-                type:
-                  recorder.mimeType
+                audio:
+                  true
               }
             );
 
 
-          $("preview")
-            .src =
-            URL.createObjectURL(
-              voiceBlob
-            );
+        recordedChunks = [];
 
 
-          $("preview")
-            .classList
-            .remove(
-              "hidden"
-            );
+        recorder =
+          new MediaRecorder(
+            microphone
+          );
 
 
-          $("sendVoice")
-            .classList
-            .remove(
-              "hidden"
-            );
+        recorder.ondataavailable =
+          event => {
+
+            if (
+              event.data.size
+            ) {
+
+              recordedChunks
+                .push(
+                  event.data
+                );
+
+            }
+
+          };
 
 
-          $("record")
-            .textContent =
-            "🎙️ Start recording";
+        recorder.onstop =
+          () => {
 
-        };
-
-
-      recorder.start();
-
-
-      $("record")
-        .textContent =
-        "⏹ Stop recording";
-
-    }
-
-    catch (error) {
-
-      alert(
-        error.message
-      );
-
-    }
-
-  };
+            microphone
+              .getTracks()
+              .forEach(
+                track =>
+                  track.stop()
+              );
 
 
-/* =========================
+            voiceBlob =
+              new Blob(
+                recordedChunks,
+                {
+                  type:
+                    recorder.mimeType
+                }
+              );
+
+
+            if ($("preview")) {
+
+              $("preview")
+                .src =
+                URL.createObjectURL(
+                  voiceBlob
+                );
+
+
+              $("preview")
+                .classList
+                .remove(
+                  "hidden"
+                );
+
+            }
+
+
+            if ($("sendVoice")) {
+
+              $("sendVoice")
+                .classList
+                .remove(
+                  "hidden"
+                );
+
+            }
+
+
+            $("record")
+              .textContent =
+              "🎙️ Start recording";
+
+          };
+
+
+        recorder.start();
+
+
+        $("record")
+          .textContent =
+          "⏹ Stop recording";
+
+      }
+
+      catch (error) {
+
+        alert(
+          error.message
+        );
+
+      }
+
+    };
+
+}
+
+
+/* =========================================================
    SEND VOICE
-========================= */
+========================================================= */
 
-$("sendVoice")
-  .onclick =
-  async () => {
+if ($("sendVoice")) {
 
-    if (
-      !voiceBlob ||
-      !friend
-    )
-      return;
+  $("sendVoice")
+    .onclick =
+    async () => {
 
+      if (
+        !voiceBlob ||
+        !friend
+      ) {
 
-    const filename =
-      myUserId +
-      "/" +
-      crypto.randomUUID() +
-      ".webm";
+        return;
+
+      }
 
 
-    const upload =
-      await supabaseClient
-        .storage
-        .from(
-          "voice-messages"
-        )
-        .upload(
-          filename,
-          voiceBlob,
-          {
-            contentType:
-              "audio/webm"
-          }
+      const filename =
+        myUserId +
+        "/" +
+        crypto.randomUUID() +
+        ".webm";
+
+
+      const upload =
+        await supabaseClient
+          .storage
+          .from(
+            "voice-messages"
+          )
+          .upload(
+            filename,
+            voiceBlob,
+            {
+              contentType:
+                "audio/webm"
+            }
+          );
+
+
+      if (upload.error) {
+
+        alert(
+          upload.error.message
+        );
+
+        return;
+
+      }
+
+
+      const {
+        error
+      } =
+        await supabaseClient
+          .from(
+            "safe_messages"
+          )
+          .insert(
+            {
+
+              sender_id:
+                myUserId,
+
+              receiver_id:
+                friend.id,
+
+              message_type:
+                "voice",
+
+              media_path:
+                filename
+
+            }
+          );
+
+
+      if (error) {
+
+        alert(
+          error.message
+        );
+
+        return;
+
+      }
+
+
+      voiceBlob =
+        null;
+
+
+      $("preview")
+        .classList
+        .add(
+          "hidden"
         );
 
 
-    if (upload.error) {
-
-      alert(
-        upload.error.message
-      );
-
-      return;
-    }
+      $("sendVoice")
+        .classList
+        .add(
+          "hidden"
+        );
 
 
-    const {
-      error
-    } =
-      await supabaseClient
-        .from(
-          "safe_messages"
-        )
-        .insert({
+      await loadMessages();
 
-          sender_id:
-            myUserId,
+    };
 
-          receiver_id:
-            friend.id,
-
-          message_type:
-            "voice",
-
-          media_path:
-            filename
-
-        });
+}
 
 
-    if (error) {
-
-      alert(
-        error.message
-      );
-
-      return;
-    }
-
-
-    voiceBlob = null;
-
-
-    $("preview")
-      .classList
-      .add(
-        "hidden"
-      );
-
-
-    $("sendVoice")
-      .classList
-      .add(
-        "hidden"
-      );
-
-  };
-
-
-/* =========================
+/* =========================================================
    VOICE CALL
-========================= */
+========================================================= */
 
 async function startCall() {
 
@@ -1190,6 +1724,7 @@ async function startCall() {
     );
 
     return;
+
   }
 
 
@@ -1198,23 +1733,27 @@ async function startCall() {
     localStream =
       await navigator
         .mediaDevices
-        .getUserMedia({
-          audio:
-            true
-        });
+        .getUserMedia(
+          {
+            audio:
+              true
+          }
+        );
 
 
     peer =
-      new RTCPeerConnection({
+      new RTCPeerConnection(
+        {
 
-        iceServers: [
-          {
-            urls:
-              "stun:stun.l.google.com:19302"
-          }
-        ]
+          iceServers: [
+            {
+              urls:
+                "stun:stun.l.google.com:19302"
+            }
+          ]
 
-      });
+        }
+      );
 
 
     localStream
@@ -1231,9 +1770,13 @@ async function startCall() {
     peer.ontrack =
       event => {
 
-        $("remoteAudio")
-          .srcObject =
-          event.streams[0];
+        if ($("remoteAudio")) {
+
+          $("remoteAudio")
+            .srcObject =
+            event.streams[0];
+
+        }
 
       };
 
@@ -1282,64 +1825,107 @@ async function startCall() {
     );
 
 
-    $("callStatus")
-      .textContent =
-      "Calling...";
+    if ($("callStatus")) {
+
+      $("callStatus")
+        .textContent =
+        "Calling...";
+
+    }
 
   }
 
   catch (error) {
 
-    $("callStatus")
-      .textContent =
-      error.message;
+    if ($("callStatus")) {
+
+      $("callStatus")
+        .textContent =
+        error.message;
+
+    }
 
   }
 
 }
 
 
-$("call")
-  .onclick =
-  startCall;
+if ($("call")) {
+
+  $("call")
+    .onclick =
+    startCall;
+
+}
 
 
-/* =========================
+/* =========================================================
    CALL SIGNAL
-========================= */
+========================================================= */
 
 async function sendCallSignal(
   signal
 ) {
 
-  if (!friend)
+  if (!friend) {
+
     return;
 
+  }
 
-  await supabaseClient
-    .from(
-      "safe_call_signals"
-    )
-    .insert({
 
-      sender_id:
-        myUserId,
+  const {
+    error
+  } =
+    await supabaseClient
+      .from(
+        "safe_call_signals"
+      )
+      .insert(
+        {
 
-      receiver_id:
-        friend.id,
+          sender_id:
+            myUserId,
 
-      signal:
-        signal
+          receiver_id:
+            friend.id,
 
-    });
+          signal:
+            signal
+
+        }
+      );
+
+
+  if (error) {
+
+    console.error(
+      "CALL SIGNAL ERROR:",
+      error
+    );
+
+  }
 
 }
 
 
 function subscribeCalls() {
 
-  if (!supabaseClient)
+  if (!supabaseClient) {
+
     return;
+
+  }
+
+
+  if (callChannel) {
+
+    supabaseClient
+      .removeChannel(
+        callChannel
+      );
+
+  }
 
 
   callChannel =
@@ -1349,9 +1935,7 @@ function subscribeCalls() {
         myUserId
       )
       .on(
-
         "postgres_changes",
-
         {
           event:
             "INSERT",
@@ -1362,7 +1946,6 @@ function subscribeCalls() {
           table:
             "safe_call_signals"
         },
-
         async payload => {
 
           const signal =
@@ -1372,8 +1955,11 @@ function subscribeCalls() {
           if (
             signal.receiver_id !==
             myUserId
-          )
+          ) {
+
             return;
+
+          }
 
 
           await handleCallSignal(
@@ -1382,12 +1968,15 @@ function subscribeCalls() {
           );
 
         }
-
       )
       .subscribe();
 
 }
 
+
+/* =========================================================
+   HANDLE CALL SIGNAL
+========================================================= */
 
 async function handleCallSignal(
   signal,
@@ -1400,8 +1989,10 @@ async function handleCallSignal(
   ) {
 
     friend = {
+
       id:
         senderId
+
     };
 
 
@@ -1410,23 +2001,27 @@ async function handleCallSignal(
       localStream =
         await navigator
           .mediaDevices
-          .getUserMedia({
-            audio:
-              true
-          });
+          .getUserMedia(
+            {
+              audio:
+                true
+            }
+          );
 
 
       peer =
-        new RTCPeerConnection({
+        new RTCPeerConnection(
+          {
 
-          iceServers: [
-            {
-              urls:
-                "stun:stun.l.google.com:19302"
-            }
-          ]
+            iceServers: [
+              {
+                urls:
+                  "stun:stun.l.google.com:19302"
+              }
+            ]
 
-        });
+          }
+        );
 
 
       localStream
@@ -1443,9 +2038,13 @@ async function handleCallSignal(
       peer.ontrack =
         event => {
 
-          $("remoteAudio")
-            .srcObject =
-            event.streams[0];
+          if ($("remoteAudio")) {
+
+            $("remoteAudio")
+              .srcObject =
+              event.streams[0];
+
+          }
 
         };
 
@@ -1475,13 +2074,15 @@ async function handleCallSignal(
 
 
     await peer
-      .setRemoteDescription({
-        type:
-          "offer",
+      .setRemoteDescription(
+        {
+          type:
+            "offer",
 
-        sdp:
-          signal.sdp
-      });
+          sdp:
+            signal.sdp
+        }
+      );
 
 
     const answer =
@@ -1499,28 +2100,35 @@ async function handleCallSignal(
       .from(
         "safe_call_signals"
       )
-      .insert({
+      .insert(
+        {
 
-        sender_id:
-          myUserId,
+          sender_id:
+            myUserId,
 
-        receiver_id:
-          senderId,
+          receiver_id:
+            senderId,
 
-        signal: {
-          type:
-            "answer",
+          signal:
+            {
+              type:
+                "answer",
 
-          sdp:
-            answer.sdp
+              sdp:
+                answer.sdp
+            }
+
         }
+      );
 
-      });
 
+    if ($("callStatus")) {
 
-    $("callStatus")
-      .textContent =
-      "Incoming call connected.";
+      $("callStatus")
+        .textContent =
+        "Incoming call connected.";
+
+    }
 
   }
 
@@ -1532,20 +2140,26 @@ async function handleCallSignal(
   ) {
 
     await peer
-      .setRemoteDescription({
+      .setRemoteDescription(
+        {
 
-        type:
-          "answer",
+          type:
+            "answer",
 
-        sdp:
-          signal.sdp
+          sdp:
+            signal.sdp
 
-      });
+        }
+      );
 
 
-    $("callStatus")
-      .textContent =
-      "Call connected.";
+    if ($("callStatus")) {
+
+      $("callStatus")
+        .textContent =
+        "Call connected.";
+
+    }
 
   }
 
@@ -1568,6 +2182,7 @@ async function handleCallSignal(
     catch (error) {
 
       console.error(
+        "ICE ERROR:",
         error
       );
 
@@ -1578,47 +2193,57 @@ async function handleCallSignal(
 }
 
 
-/* =========================
+/* =========================================================
    END CALL
-========================= */
+========================================================= */
 
-$("hangup")
-  .onclick =
-  () => {
+if ($("hangup")) {
 
-    if (peer) {
+  $("hangup")
+    .onclick =
+    () => {
 
-      peer.close();
+      if (peer) {
 
-      peer = null;
+        peer.close();
 
-    }
+        peer =
+          null;
 
-
-    if (localStream) {
-
-      localStream
-        .getTracks()
-        .forEach(
-          track =>
-            track.stop()
-        );
-
-      localStream = null;
-
-    }
+      }
 
 
-    $("callStatus")
-      .textContent =
-      "No active call.";
+      if (localStream) {
 
-  };
+        localStream
+          .getTracks()
+          .forEach(
+            track =>
+              track.stop()
+          );
+
+        localStream =
+          null;
+
+      }
 
 
-/* =========================
+      if ($("callStatus")) {
+
+        $("callStatus")
+          .textContent =
+          "No active call.";
+
+      }
+
+    };
+
+}
+
+
+/* =========================================================
    COMMUNICATION TABS
-========================= */
+========================================================= */
 
 document
   .querySelectorAll(
@@ -1663,14 +2288,22 @@ document
             );
 
 
-          $(
-            button.dataset.tab +
-            "Panel"
-          )
-            .classList
-            .remove(
-              "hidden"
+          const target =
+            $(
+              button.dataset.tab +
+              "Panel"
             );
+
+
+          if (target) {
+
+            target
+              .classList
+              .remove(
+                "hidden"
+              );
+
+          }
 
         };
 
@@ -1678,9 +2311,9 @@ document
   );
 
 
-/* =========================
+/* =========================================================
    ROUTE ADVISORY
-========================= */
+========================================================= */
 
 async function geocode(
   query
@@ -1729,178 +2362,198 @@ async function geocode(
 }
 
 
-$("route")
-  .onclick =
-  async () => {
+if ($("route")) {
 
-    if (!myPosition) {
+  $("route")
+    .onclick =
+    async () => {
 
-      locate();
+      if (!myPosition) {
 
-      return;
-    }
+        locate();
 
-
-    const destination =
-      $("destination")
-        .value
-        .trim();
-
-
-    if (!destination)
-      return;
-
-
-    $("routeState")
-      .textContent =
-      "Planning...";
-
-
-    try {
-
-      const place =
-        await geocode(
-          destination
-        );
-
-
-      const response =
-        await fetch(
-          `https://router.project-osrm.org/route/v1/driving/${myPosition.lon},${myPosition.lat};${place.lon},${place.lat}?overview=full&geometries=geojson`
-        );
-
-
-      const data =
-        await response.json();
-
-
-      const route =
-        data.routes[0];
-
-
-      if (routeLayer) {
-
-        map.removeLayer(
-          routeLayer
-        );
+        return;
 
       }
 
 
-      routeLayer =
-        L.geoJSON(
-          route.geometry,
-          {
-            style: {
-              color:
-                "#55a5ff",
-
-              weight:
-                6
-            }
-          }
-        )
-        .addTo(map);
+      const destination =
+        $("destination")
+          .value
+          .trim();
 
 
-      map.fitBounds(
-        routeLayer.getBounds(),
-        {
-          padding:
-            [25, 25]
+      if (!destination) {
+
+        return;
+
+      }
+
+
+      $("routeState")
+        .textContent =
+        "Planning...";
+
+
+      try {
+
+        const place =
+          await geocode(
+            destination
+          );
+
+
+        const response =
+          await fetch(
+            `https://router.project-osrm.org/route/v1/driving/${myPosition.lon},${myPosition.lat};${place.lon},${place.lat}?overview=full&geometries=geojson`
+          );
+
+
+        const data =
+          await response.json();
+
+
+        if (
+          !data.routes ||
+          !data.routes.length
+        ) {
+
+          throw new Error(
+            "No route found."
+          );
+
         }
-      );
 
 
-      const km =
-        route.distance /
-        1000;
+        const route =
+          data.routes[0];
 
 
-      const minutes =
-        Math.round(
-          route.duration /
-          60
+        if (routeLayer) {
+
+          map.removeLayer(
+            routeLayer
+          );
+
+        }
+
+
+        routeLayer =
+          L.geoJSON(
+            route.geometry,
+            {
+              style:
+                {
+                  color:
+                    "#55a5ff",
+
+                  weight:
+                    6
+                }
+            }
+          )
+          .addTo(map);
+
+
+        map.fitBounds(
+          routeLayer.getBounds(),
+          {
+            padding:
+              [25, 25]
+          }
         );
 
 
-      $("routeInfo")
-        .innerHTML =
+        const km =
+          route.distance /
+          1000;
 
-        `<div class="stats">
 
-          <div class="stat">
-            <b>
-              ${km.toFixed(1)} km
-            </b>
-            <span>
-              Distance
-            </span>
+        const minutes =
+          Math.round(
+            route.duration /
+            60
+          );
+
+
+        $("routeInfo")
+          .innerHTML =
+
+          `<div class="stats">
+
+            <div class="stat">
+              <b>
+                ${km.toFixed(1)} km
+              </b>
+              <span>
+                Distance
+              </span>
+            </div>
+
+            <div class="stat">
+              <b>
+                ${
+                  minutes < 60
+                    ? minutes +
+                      " min"
+                    : Math.floor(
+                        minutes / 60
+                      ) +
+                      " hr " +
+                      (
+                        minutes % 60
+                      ) +
+                      " min"
+                }
+              </b>
+
+              <span>
+                Estimated drive time
+              </span>
+            </div>
+
           </div>
 
-          <div class="stat">
+          <div class="advice">
+
             <b>
-              ${
-                minutes < 60
-                  ? minutes +
-                    " min"
-                  : Math.floor(
-                      minutes / 60
-                    ) +
-                    " hr " +
-                    (
-                      minutes % 60
-                    ) +
-                    " min"
-              }
+              Route Advisory:
             </b>
 
-            <span>
-              Estimated drive time
-            </span>
-          </div>
+            Check fuel,
+            public transport,
+            ATM and emergency
+            services before travelling.
 
-        </div>
-
-        <div class="advice">
-
-          <b>
-            Route Advisory:
-          </b>
-
-          Check fuel,
-          public transport,
-          ATM and emergency
-          services before travelling.
-
-        </div>`;
+          </div>`;
 
 
-      $("routeState")
-        .textContent =
-        "Ready";
+        $("routeState")
+          .textContent =
+          "Ready";
+
+      }
+
+      catch (error) {
+
+        $("routeInfo")
+          .textContent =
+          error.message;
+
+        $("routeState")
+          .textContent =
+          "Error";
+
+      }
+
+    };
+
+}
 
 
-    }
-
-    catch (error) {
-
-      $("routeInfo")
-        .textContent =
-        error.message;
-
-      $("routeState")
-        .textContent =
-        "Error";
-
-    }
-
-  };
-
-
-/* =========================
+/* =========================================================
    NEARBY
-========================= */
+========================================================= */
 
 const nearbyTypes = {
 
@@ -1946,12 +2599,14 @@ function calculateDistance(
 
   const dLat =
     (b.lat - a.lat) *
-    Math.PI / 180;
+    Math.PI /
+    180;
 
 
   const dLon =
     (b.lon - a.lon) *
-    Math.PI / 180;
+    Math.PI /
+    180;
 
 
   const x =
@@ -1961,12 +2616,14 @@ function calculateDistance(
 
     Math.cos(
       a.lat *
-      Math.PI / 180
+      Math.PI /
+      180
     ) *
 
     Math.cos(
       b.lat *
-      Math.PI / 180
+      Math.PI /
+      180
     ) *
 
     Math.sin(
@@ -1994,6 +2651,7 @@ async function findNearby(
     locate();
 
     return;
+
   }
 
 
@@ -2229,6 +2887,12 @@ async function findNearby(
 
   catch (error) {
 
+    console.error(
+      "NEARBY ERROR:",
+      error
+    );
+
+
     $("nearbyResults")
       .textContent =
       "Nearby search failed.";
@@ -2278,30 +2942,34 @@ document
   );
 
 
-$("refresh")
-  .onclick =
-  () => {
+if ($("refresh")) {
 
-    const active =
-      document.querySelector(
-        ".nearby button.active"
-      );
+  $("refresh")
+    .onclick =
+    () => {
 
-
-    if (active) {
-
-      findNearby(
-        active.dataset.kind
-      );
-
-    }
-
-  };
+      const active =
+        document.querySelector(
+          ".nearby button.active"
+        );
 
 
-/* =========================
-   START
-========================= */
+      if (active) {
+
+        findNearby(
+          active.dataset.kind
+        );
+
+      }
+
+    };
+
+}
+
+
+/* =========================================================
+   START SAFE ROUTE
+========================================================= */
 
 locate();
 
