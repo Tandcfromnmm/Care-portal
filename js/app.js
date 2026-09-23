@@ -824,61 +824,45 @@ function displayMessage(
 
 function subscribeMessages() {
 
-  if (!supabaseClient)
-    return;
+  if (!supabaseClient) return;
 
+  if (messageChannel) {
+    supabaseClient.removeChannel(messageChannel);
+  }
 
   messageChannel =
     supabaseClient
-      .channel(
-        "safe-messages-" +
-        myUserId
-      )
+      .channel("safe-messages-" + myUserId + "-" + Date.now())
       .on(
-
         "postgres_changes",
-
         {
-          event:
-            "INSERT",
-
-          schema:
-            "public",
-
-          table:
-            "safe_messages"
+          event: "INSERT",
+          schema: "public",
+          table: "safe_messages"
         },
+        async payload => {
 
-        payload => {
-
-          const message =
-            payload.new;
-
+          const message = payload.new;
 
           if (
-            message.receiver_id ===
-              myUserId ||
-
-            message.sender_id ===
-              myUserId
+            message.sender_id === myUserId ||
+            message.receiver_id === myUserId
           ) {
 
-            displayMessage(
-              message
-            );
-
-
-            $("messages")
-              .scrollTop =
-              $("messages")
-                .scrollHeight;
+            await loadMessages();
 
           }
 
         }
-
       )
-      .subscribe();
+      .subscribe(status => {
+
+        console.log(
+          "Safe Messages Realtime:",
+          status
+        );
+
+      });
 
 }
 
