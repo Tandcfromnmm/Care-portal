@@ -1,105 +1,181 @@
+const CONFIG =
+  window.SAFE_ROUTE_CONFIG || {};
 
-const C = window.SAFE_ROUTE_CONFIG || {};
+const SUPABASE_READY =
+  CONFIG.SUPABASE_URL &&
+  CONFIG.SUPABASE_ANON_KEY &&
+  !CONFIG.SUPABASE_URL.includes("YOUR_") &&
+  !CONFIG.SUPABASE_ANON_KEY.includes("YOUR_");
 
-const configured =
-  C.SUPABASE_URL &&
-  C.SUPABASE_ANON_KEY &&
-  !C.SUPABASE_URL.includes("YOUR_") &&
-  !C.SUPABASE_ANON_KEY.includes("YOUR_");
 
-const sb = configured
-  ? window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY)
-  : null;
+const supabaseClient =
+  SUPABASE_READY
+    ? window.supabase.createClient(
+        CONFIG.SUPABASE_URL,
+        CONFIG.SUPABASE_ANON_KEY
+      )
+    : null;
 
-const $ = id => document.getElementById(id);
 
-const esc = s =>
-  String(s ?? "").replace(/[&<>"']/g, c => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;"
-  }[c]));
+/* =========================
+   TEMPORARY SAFE ROUTE ID
+========================= */
 
-let pos = null;
-let userMarker = null;
-let userCircle = null;
-let routeLayer = null;
+function generateSafeId() {
 
-let nearbyLayer;
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-let me = null;
+  let result = "SR-";
+
+  for (let i = 0; i < 5; i++) {
+
+    result +=
+      chars[
+        Math.floor(
+          Math.random() * chars.length
+        )
+      ];
+
+  }
+
+  return result;
+}
+
+
+let mySafeId =
+  localStorage.getItem(
+    "safe_route_id"
+  );
+
+
+if (!mySafeId) {
+
+  mySafeId =
+    generateSafeId();
+
+  localStorage.setItem(
+    "safe_route_id",
+    mySafeId
+  );
+
+}
+
+
+document.getElementById(
+  "mySafeId"
+).textContent =
+  mySafeId;
+
+
+/* =========================
+   USER STATE
+========================= */
+
+let myUserId =
+  localStorage.getItem(
+    "safe_route_user_id"
+  );
+
+
+if (!myUserId) {
+
+  myUserId =
+    crypto.randomUUID();
+
+  localStorage.setItem(
+    "safe_route_user_id",
+    myUserId
+  );
+
+}
+
+
 let friend = null;
 
-let msgChannel = null;
-let signalChannel = null;
+let myPosition = null;
+
+let userMarker = null;
+
+let userCircle = null;
+
+let routeLayer = null;
+
+let nearbyLayer = null;
+
+let messageChannel = null;
+
+let callChannel = null;
 
 let peer = null;
-let stream = null;
 
-let rec = null;
-let chunks = [];
-let voice = null;
-let timer = null;
-let seconds = 0;
+let localStream = null;
+
+let recorder = null;
+
+let recordedChunks = [];
+
+let voiceBlob = null;
+
+
+/* =========================
+   HELPERS
+========================= */
+
+const $ =
+  id =>
+    document.getElementById(id);
+
+
+function status(text) {
+
+  $("mapStatus")
+    .textContent = text;
+
+}
+
+
+function setConnection(
+  text,
+  type = ""
+) {
+
+  $("connection")
+    .textContent = text;
+
+  $("connection")
+    .className =
+      "badge " + type;
+
+}
 
 
 /* =========================
    MAP
 ========================= */
 
-const map = L.map("map").setView([17.385, 78.4867], 12);
+const map =
+  L.map("map")
+   .setView(
+      [17.385, 78.4867],
+      12
+    );
+
 
 L.tileLayer(
   "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   {
     maxZoom: 19,
-    attribution: "&copy; OpenStreetMap"
+
+    attribution:
+      "&copy; OpenStreetMap"
   }
 ).addTo(map);
 
-nearbyLayer = L.layerGroup().addTo(map);
 
-
-/* =========================
-   GENERAL UI
-========================= */
-
-function status(t) {
-  $("mapStatus").textContent = t;
-}
-
-function badge(id, t, c) {
-  $(id).textContent = t;
-  $(id).className = "badge " + (c || "");
-}
-
-
-/* =========================
-   DISTANCE
-========================= */
-
-function distance(a, b) {
-
-  const R = 6371;
-
-  const d1 =
-    (b.lat - a.lat) *
-    Math.PI / 180;
-
-  const d2 =
-    (b.lon - a.lon) *
-    Math.PI / 180;
-
-  const x =
-    Math.sin(d1 / 2) ** 2 +
-    Math.cos(a.lat * Math.PI / 180) *
-    Math.cos(b.lat * Math.PI / 180) *
-    Math.sin(d2 / 2) ** 2;
-
-  return 2 * R * Math.asin(Math.sqrt(x));
-}
+nearbyLayer =
+  L.layerGroup()
+   .addTo(map);
 
 
 /* =========================
@@ -109,360 +185,480 @@ function distance(a, b) {
 function locate() {
 
   if (!navigator.geolocation) {
-    return status("Geolocation is not supported.");
+
+    status(
+      "GPS is not supported."
+    );
+
+    return;
   }
 
-  status("Requesting location…");
 
-  navigator.geolocation.getCurrentPosition(
-    p => {
-
-      pos = {
-        lat: p.coords.latitude,
-        lon: p.coords.longitude
-      };
-
-      if (userMarker) {
-
-        userMarker.setLatLng([
-          pos.lat,
-          pos.lon
-        ]);
-
-      } else {
-
-        userMarker =
-          L.marker([
-            pos.lat,
-            pos.lon
-          ])
-            .addTo(map)
-            .bindPopup("You are here");
-
-      }
-
-      if (userCircle) {
-
-        userCircle
-          .setLatLng([
-            pos.lat,
-            pos.lon
-          ])
-          .setRadius(
-            p.coords.accuracy || 30
-          );
-
-      } else {
-
-        userCircle =
-          L.circle(
-            [
-              pos.lat,
-              pos.lon
-            ],
-            {
-              radius: p.coords.accuracy || 30,
-              color: "#55a5ff",
-              fillOpacity: 0.08
-            }
-          ).addTo(map);
-
-      }
-
-      map.setView(
-        [
-          pos.lat,
-          pos.lon
-        ],
-        15
-      );
-
-      status(
-        "Location found • ±" +
-        Math.round(p.coords.accuracy || 0) +
-        " m"
-      );
-
-    },
-
-    e => {
-
-      if (e.code === 1) {
-        status("Location permission denied.");
-      } else {
-        status("Could not get your location.");
-      }
-
-    },
-
-    {
-      enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 30000
-    }
+  status(
+    "Requesting location..."
   );
+
+
+  navigator.geolocation
+    .getCurrentPosition(
+
+      position => {
+
+        myPosition = {
+
+          lat:
+            position.coords.latitude,
+
+          lon:
+            position.coords.longitude
+
+        };
+
+
+        if (userMarker) {
+
+          userMarker.setLatLng([
+            myPosition.lat,
+            myPosition.lon
+          ]);
+
+        }
+
+        else {
+
+          userMarker =
+            L.marker([
+              myPosition.lat,
+              myPosition.lon
+            ])
+            .addTo(map)
+            .bindPopup(
+              "You are here"
+            );
+
+        }
+
+
+        if (userCircle) {
+
+          userCircle
+            .setLatLng([
+              myPosition.lat,
+              myPosition.lon
+            ]);
+
+        }
+
+        else {
+
+          userCircle =
+            L.circle(
+              [
+                myPosition.lat,
+                myPosition.lon
+              ],
+              {
+                radius:
+                  position.coords.accuracy ||
+                  30,
+
+                color:
+                  "#55a5ff",
+
+                fillOpacity:
+                  0.08
+              }
+            )
+            .addTo(map);
+
+        }
+
+
+        map.setView(
+          [
+            myPosition.lat,
+            myPosition.lon
+          ],
+          15
+        );
+
+
+        status(
+          "Location found"
+        );
+
+      },
+
+      error => {
+
+        status(
+          "Location permission denied or unavailable."
+        );
+
+      },
+
+      {
+        enableHighAccuracy:
+          true,
+
+        timeout:
+          15000,
+
+        maximumAge:
+          30000
+      }
+
+    );
+
 }
 
-$("locateBtn").onclick = locate;
+
+$("locateBtn")
+  .onclick =
+  locate;
 
 
 /* =========================
-   AUTH
+   COPY SAFE ID
 ========================= */
 
-function authModal() {
-  $("authModal").classList.remove("hidden");
-}
+$("copyId")
+  .onclick =
+  async () => {
 
-$("closeModal").onclick = () => {
-  $("authModal").classList.add("hidden");
-};
+    try {
 
-
-$("signIn").onclick = async () => {
-
-  if (!sb) {
-
-    $("authStatus").textContent =
-      "First configure js/config.js with your Supabase URL and public key.";
-
-    return;
-  }
-
-  const email =
-    $("authEmail").value.trim();
-
-  const password =
-    $("authPassword").value;
-
-  const {
-    data,
-    error
-  } =
-    await sb.auth.signInWithPassword({
-      email,
-      password
-    });
-
-  if (error) {
-
-    $("authStatus").textContent =
-      error.message;
-
-    return;
-  }
-
-  $("authModal").classList.add("hidden");
-
-  await loggedIn(data.user);
-};
+      await navigator
+        .clipboard
+        .writeText(
+          mySafeId
+        );
 
 
-$("signUp").onclick = async () => {
-
-  if (!sb) {
-
-    $("authStatus").textContent =
-      "First configure js/config.js.";
-
-    return;
-  }
-
-  const email =
-    $("authEmail").value.trim();
-
-  const password =
-    $("authPassword").value;
-
-  const {
-    data,
-    error
-  } =
-    await sb.auth.signUp({
-      email,
-      password
-    });
-
-  if (error) {
-
-    $("authStatus").textContent =
-      error.message;
-
-    return;
-  }
-
-  $("authStatus").textContent =
-    data.session
-      ? "Account created."
-      : "Account created. Check your email if confirmation is enabled.";
-
-  if (data.user) {
-    await ensureProfile(data.user);
-  }
-};
+      $("copyId")
+        .textContent =
+        "✓ ID Copied";
 
 
-async function ensureProfile(u) {
+      setTimeout(
+        () => {
 
-  if (!sb) return;
+          $("copyId")
+            .textContent =
+            "📋 Copy my ID";
 
-  await sb
-    .from("profiles")
-    .upsert(
-      {
-        id: u.id,
-        email: u.email
-      },
-      {
-        onConflict: "id"
-      }
+        },
+        1500
+      );
+
+    }
+
+    catch {
+
+      alert(
+        "Your Safe Route ID: " +
+        mySafeId
+      );
+
+    }
+
+  };
+
+
+/* =========================
+   SUPABASE ANONYMOUS SESSION
+========================= */
+
+async function startAnonymousSession() {
+
+  if (!supabaseClient) {
+
+    setConnection(
+      "Backend needed",
+      "warn"
     );
-}
+
+    return null;
+
+  }
 
 
-async function loggedIn(u) {
+  const {
+    data,
+    error
+  } =
+    await supabaseClient.auth
+      .signInAnonymously();
 
-  me = u;
 
-  await ensureProfile(u);
+  if (error) {
 
-  badge(
-    "connection",
+    console.error(error);
+
+    setConnection(
+      "Backend error",
+      "warn"
+    );
+
+    return null;
+
+  }
+
+
+  setConnection(
     "Online",
     "ok"
   );
 
-  $("authModal").classList.add("hidden");
 
-  $("locateBtn").textContent =
-    "📍 Locate me";
+  return data.user;
 
-  subscribeSignals();
 }
 
 
-async function init() {
+/* =========================
+   REGISTER TEMP ID
+========================= */
 
-  if (!configured) {
+async function registerSafeId() {
 
-    badge(
-      "connection",
-      "Setup needed",
-      "warn"
+  if (!supabaseClient)
+    return;
+
+
+  const user =
+    await startAnonymousSession();
+
+
+  if (!user)
+    return;
+
+
+  myUserId =
+    user.id;
+
+
+  localStorage.setItem(
+    "safe_route_user_id",
+    myUserId
+  );
+
+
+  await supabaseClient
+    .from("safe_users")
+    .upsert(
+      {
+        id:
+          myUserId,
+
+        safe_id:
+          mySafeId,
+
+        last_seen:
+          new Date().toISOString()
+      },
+      {
+        onConflict:
+          "safe_id"
+      }
+    );
+
+
+  subscribeMessages();
+
+  subscribeCalls();
+
+}
+
+
+/* =========================
+   CONNECT TO USER
+========================= */
+
+$("connectBtn")
+  .onclick =
+  connectToUser;
+
+
+async function connectToUser() {
+
+  const id =
+    $("friendId")
+      .value
+      .trim()
+      .toUpperCase();
+
+
+  if (!id) {
+
+    $("connectStatus")
+      .textContent =
+      "Enter a Safe Route ID.";
+
+    return;
+  }
+
+
+  if (id === mySafeId) {
+
+    $("connectStatus")
+      .textContent =
+      "You cannot connect to your own ID.";
+
+    return;
+  }
+
+
+  if (!supabaseClient) {
+
+    $("connectStatus")
+      .textContent =
+      "Configure Supabase first.";
+
+    return;
+  }
+
+
+  const {
+    data,
+    error
+  } =
+    await supabaseClient
+      .from("safe_users")
+      .select(
+        "id,safe_id"
+      )
+      .eq(
+        "safe_id",
+        id
+      )
+      .maybeSingle();
+
+
+  if (error) {
+
+    $("connectStatus")
+      .textContent =
+      error.message;
+
+    return;
+  }
+
+
+  if (!data) {
+
+    $("connectStatus")
+      .textContent =
+      "User not found or no longer online.";
+
+    return;
+  }
+
+
+  friend = data;
+
+
+  $("chatName")
+    .textContent =
+    "Connected to " +
+    friend.safe_id;
+
+
+  $("connectStatus")
+    .textContent =
+    "✓ Connected";
+
+
+  await loadMessages();
+
+}
+
+
+/* =========================
+   MESSAGES
+========================= */
+
+async function sendMessage() {
+
+  if (!friend) {
+
+    alert(
+      "Connect to a Safe Route user first."
     );
 
     return;
   }
 
-  const {
-    data
-  } =
-    await sb.auth.getSession();
 
-  if (data.session) {
-    await loggedIn(data.session.user);
-  }
-
-  sb.auth.onAuthStateChange(
-    async (e, s) => {
-
-      if (s && !me) {
-        await loggedIn(s.user);
-      }
-
-    }
-  );
-}
+  const message =
+    $("message")
+      .value
+      .trim();
 
 
-$("connection").onclick = () => {
+  if (!message)
+    return;
 
-  if (!me) {
-    authModal();
-  }
-
-};
-
-
-/* =========================
-   COMMUNICATION TABS
-========================= */
-
-document
-  .querySelectorAll(".tab")
-  .forEach(b => {
-
-    b.onclick = () => {
-
-      document
-        .querySelectorAll(".tab")
-        .forEach(x =>
-          x.classList.remove("active")
-        );
-
-      b.classList.add("active");
-
-      document
-        .querySelectorAll(".panel")
-        .forEach(x =>
-          x.classList.add("hidden")
-        );
-
-      $(
-        b.dataset.tab + "Panel"
-      ).classList.remove("hidden");
-
-    };
-
-  });
-
-
-/* =========================
-   FIND FRIEND
-========================= */
-
-async function findFriend() {
-
-  if (!me) {
-    return authModal();
-  }
-
-  const email =
-    $("emailTo").value.trim();
-
-  if (!email) return;
 
   const {
-    data
+    error
   } =
-    await sb
-      .from("profiles")
-      .select("id,email")
-      .eq("email", email)
-      .limit(1);
+    await supabaseClient
+      .from("safe_messages")
+      .insert({
 
-  if (!data?.length) {
+        sender_id:
+          myUserId,
 
-    $("chatName").textContent =
-      "User not found.";
+        receiver_id:
+          friend.id,
+
+        message_type:
+          "text",
+
+        content:
+          message
+
+      });
+
+
+  if (error) {
+
+    alert(
+      error.message
+    );
 
     return;
   }
 
-  friend = data[0];
 
-  $("chatName").textContent =
-    "Chatting with " +
-    (friend.email || friend.id);
+  $("message")
+    .value = "";
 
-  await loadMessages();
-
-  subscribeMessages();
 }
 
 
-$("openChat").onclick =
-  findFriend;
+$("send")
+  .onclick =
+  sendMessage;
+
+
+$("message")
+  .addEventListener(
+    "keydown",
+    event => {
+
+      if (
+        event.key ===
+        "Enter"
+      ) {
+
+        sendMessage();
+
+      }
+
+    }
+  );
 
 
 /* =========================
@@ -471,119 +667,125 @@ $("openChat").onclick =
 
 async function loadMessages() {
 
-  if (!friend) return;
+  if (!friend)
+    return;
 
-  const a = me.id;
-  const b = friend.id;
 
   const {
     data,
     error
   } =
-    await sb
-      .from("messages")
+    await supabaseClient
+      .from("safe_messages")
       .select("*")
       .or(
-        `and(sender_id.eq.${a},recipient_id.eq.${b}),and(sender_id.eq.${b},recipient_id.eq.${a})`
+        `and(sender_id.eq.${myUserId},receiver_id.eq.${friend.id}),and(sender_id.eq.${friend.id},receiver_id.eq.${myUserId})`
       )
-      .order("created_at");
+      .order(
+        "created_at",
+        {
+          ascending:
+            true
+        }
+      );
+
 
   if (error) {
 
-    $("messages").innerHTML =
-      '<div class="muted">' +
-      esc(error.message) +
+    $("messages")
+      .innerHTML =
+      "<div class='muted'>" +
+      error.message +
       "</div>";
 
     return;
   }
 
-  $("messages").innerHTML = "";
 
-  data.forEach(draw);
+  $("messages")
+    .innerHTML = "";
 
-  $("messages").scrollTop =
-    $("messages").scrollHeight;
+
+  data.forEach(
+    displayMessage
+  );
+
+
+  $("messages")
+    .scrollTop =
+    $("messages")
+      .scrollHeight;
+
 }
 
 
 /* =========================
-   DRAW MESSAGE
+   DISPLAY MESSAGE
 ========================= */
 
-function draw(m) {
+function displayMessage(
+  message
+) {
 
-  const d =
-    document.createElement("div");
+  const div =
+    document.createElement(
+      "div"
+    );
 
-  d.className =
+
+  div.className =
     "bubble " +
     (
-      m.sender_id === me.id
+      message.sender_id ===
+      myUserId
         ? "me"
         : "them"
     );
 
 
-  if (m.message_type === "location") {
+  if (
+    message.message_type ===
+    "location"
+  ) {
 
-    const a =
-      document.createElement("a");
+    const link =
+      document.createElement(
+        "a"
+      );
 
-    a.href =
-      `https://www.openstreetmap.org/?mlat=${m.latitude}&mlon=${m.longitude}#map=17/${m.latitude}/${m.longitude}`;
 
-    a.target = "_blank";
+    link.href =
+      `https://www.openstreetmap.org/?mlat=${message.latitude}&mlon=${message.longitude}`;
 
-    a.textContent =
+
+    link.target =
+      "_blank";
+
+
+    link.textContent =
       "📍 Shared location";
 
-    d.appendChild(a);
 
-  }
-
-  else if (m.message_type === "voice") {
-
-    const au =
-      document.createElement("audio");
-
-    au.controls = true;
-
-    d.appendChild(au);
-
-    if (m.media_path) {
-
-      sb
-        .storage
-        .from("voice-messages")
-        .createSignedUrl(
-          m.media_path,
-          3600
-        )
-        .then(x => {
-
-          if (x.data?.signedUrl) {
-            au.src =
-              x.data.signedUrl;
-          }
-
-        });
-
-    }
+    div.appendChild(
+      link
+    );
 
   }
 
   else {
 
-    d.appendChild(
-      document.createTextNode(
-        m.content || ""
-      )
-    );
+    div.textContent =
+      message.content ||
+      "";
 
   }
 
-  $("messages").appendChild(d);
+
+  $("messages")
+    .appendChild(
+      div
+    );
+
 }
 
 
@@ -593,330 +795,90 @@ function draw(m) {
 
 function subscribeMessages() {
 
-  if (msgChannel) {
-    sb.removeChannel(msgChannel);
-  }
+  if (!supabaseClient)
+    return;
 
-  msgChannel =
-    sb
+
+  messageChannel =
+    supabaseClient
       .channel(
-        "messages-" + me.id
+        "safe-messages-" +
+        myUserId
       )
       .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages"
-        },
-        p => {
 
-          const m = p.new;
+        "postgres_changes",
+
+        {
+          event:
+            "INSERT",
+
+          schema:
+            "public",
+
+          table:
+            "safe_messages"
+        },
+
+        payload => {
+
+          const message =
+            payload.new;
+
 
           if (
-            friend &&
-            (
-              (
-                m.sender_id === me.id &&
-                m.recipient_id === friend.id
-              ) ||
-              (
-                m.sender_id === friend.id &&
-                m.recipient_id === me.id
-              )
-            )
+            message.receiver_id ===
+              myUserId ||
+
+            message.sender_id ===
+              myUserId
           ) {
 
-            draw(m);
+            displayMessage(
+              message
+            );
 
-            $("messages").scrollTop =
-              $("messages").scrollHeight;
+
+            $("messages")
+              .scrollTop =
+              $("messages")
+                .scrollHeight;
+
           }
 
         }
+
       )
       .subscribe();
+
 }
 
 
 /* =========================
-   SEND TEXT
+   LOCATION SHARE
 ========================= */
 
-async function send() {
-
-  if (!me) {
-    return authModal();
-  }
-
-  if (!friend) {
-    return alert(
-      "Open a chat first."
-    );
-  }
-
-  const text =
-    $("message").value.trim();
-
-  if (!text) return;
-
-  const {
-    error
-  } =
-    await sb
-      .from("messages")
-      .insert({
-        sender_id: me.id,
-        recipient_id: friend.id,
-        message_type: "text",
-        content: text
-      });
-
-  if (error) {
-
-    alert(error.message);
-
-  } else {
-
-    $("message").value = "";
-
-  }
-}
-
-
-$("send").onclick = send;
-
-$("message").addEventListener(
-  "keydown",
-  e => {
-
-    if (e.key === "Enter") {
-      send();
-    }
-
-  }
-);
-
-
-/* =========================
-   VOICE RECORDING
-========================= */
-
-async function startRec() {
-
-  if (!me || !friend) {
-
-    return alert(
-      "Sign in and open a chat first."
-    );
-  }
-
-  try {
-
-    const s =
-      await navigator
-        .mediaDevices
-        .getUserMedia({
-          audio: true
-        });
-
-    chunks = [];
-
-    rec =
-      new MediaRecorder(s);
-
-    seconds = 0;
-
-    $("timer").textContent =
-      "00:00";
-
-
-    rec.ondataavailable =
-      e => {
-
-        if (e.data.size) {
-          chunks.push(e.data);
-        }
-
-      };
-
-
-    rec.onstop = () => {
-
-      s
-        .getTracks()
-        .forEach(t => t.stop());
-
-      voice =
-        new Blob(
-          chunks,
-          {
-            type:
-              rec.mimeType ||
-              "audio/webm"
-          }
-        );
-
-      $("preview").src =
-        URL.createObjectURL(
-          voice
-        );
-
-      $("preview")
-        .classList
-        .remove("hidden");
-
-      $("sendVoice")
-        .classList
-        .remove("hidden");
-
-    };
-
-
-    rec.start();
-
-    $("record").textContent =
-      "⏹ Stop";
-
-
-    timer =
-      setInterval(() => {
-
-        seconds++;
-
-        $("timer").textContent =
-          String(
-            Math.floor(seconds / 60)
-          ).padStart(2, "0") +
-          ":" +
-          String(
-            seconds % 60
-          ).padStart(2, "0");
-
-      }, 1000);
-
-  }
-
-  catch (e) {
-
-    alert(e.message);
-
-  }
-}
-
-
-$("record").onclick = () => {
-
-  if (
-    rec &&
-    rec.state === "recording"
-  ) {
-
-    clearInterval(timer);
-
-    rec.stop();
-
-    $("record").textContent =
-      "🎙️ Start recording";
-
-  }
-
-  else {
-
-    startRec();
-
-  }
-
-};
-
-
-$("sendVoice").onclick =
+$("shareLocation")
+  .onclick =
   async () => {
-
-    if (!voice || !friend) return;
-
-    const path =
-      me.id +
-      "/" +
-      crypto.randomUUID() +
-      ".webm";
-
-
-    const u =
-      await sb
-        .storage
-        .from("voice-messages")
-        .upload(
-          path,
-          voice,
-          {
-            contentType:
-              voice.type
-          }
-        );
-
-
-    if (u.error) {
-      return alert(
-        u.error.message
-      );
-    }
-
-
-    const m =
-      await sb
-        .from("messages")
-        .insert({
-          sender_id: me.id,
-          recipient_id: friend.id,
-          message_type: "voice",
-          media_path: path
-        });
-
-
-    if (m.error) {
-
-      alert(m.error.message);
-
-    }
-
-    else {
-
-      $("preview")
-        .classList
-        .add("hidden");
-
-      $("sendVoice")
-        .classList
-        .add("hidden");
-
-      voice = null;
-
-    }
-
-  };
-
-
-/* =========================
-   SHARE LOCATION
-========================= */
-
-$("shareLocation").onclick =
-  async () => {
-
-    if (!me) {
-      return authModal();
-    }
 
     if (!friend) {
-      return alert(
-        "Open a chat first."
+
+      alert(
+        "Connect to a user first."
       );
+
+      return;
     }
 
-    if (!pos) {
+
+    if (!myPosition) {
 
       locate();
+
+      alert(
+        "Please allow GPS and try again."
+      );
 
       return;
     }
@@ -925,346 +887,832 @@ $("shareLocation").onclick =
     const {
       error
     } =
-      await sb
-        .from("messages")
+      await supabaseClient
+        .from("safe_messages")
         .insert({
-          sender_id: me.id,
-          recipient_id: friend.id,
-          message_type: "location",
-          latitude: pos.lat,
-          longitude: pos.lon
+
+          sender_id:
+            myUserId,
+
+          receiver_id:
+            friend.id,
+
+          message_type:
+            "location",
+
+          latitude:
+            myPosition.lat,
+
+          longitude:
+            myPosition.lon
+
         });
 
 
-    $("shareStatus").textContent =
+    $("shareStatus")
+      .textContent =
       error
         ? error.message
-        : "Location shared.";
+        : "✓ Location shared.";
 
   };
 
 
 /* =========================
-   WEBRTC VOICE CALL
+   VOICE RECORDING
 ========================= */
 
-async function sendSignal(
-  to,
+$("record")
+  .onclick =
+  async () => {
+
+    if (!friend) {
+
+      alert(
+        "Connect to a user first."
+      );
+
+      return;
+    }
+
+
+    if (
+      recorder &&
+      recorder.state ===
+        "recording"
+    ) {
+
+      recorder.stop();
+
+      return;
+
+    }
+
+
+    try {
+
+      const microphone =
+        await navigator
+          .mediaDevices
+          .getUserMedia({
+            audio:
+              true
+          });
+
+
+      recordedChunks = [];
+
+
+      recorder =
+        new MediaRecorder(
+          microphone
+        );
+
+
+      recorder.ondataavailable =
+        event => {
+
+          if (
+            event.data.size
+          ) {
+
+            recordedChunks
+              .push(
+                event.data
+              );
+
+          }
+
+        };
+
+
+      recorder.onstop =
+        () => {
+
+          microphone
+            .getTracks()
+            .forEach(
+              track =>
+                track.stop()
+            );
+
+
+          voiceBlob =
+            new Blob(
+              recordedChunks,
+              {
+                type:
+                  recorder.mimeType
+              }
+            );
+
+
+          $("preview")
+            .src =
+            URL.createObjectURL(
+              voiceBlob
+            );
+
+
+          $("preview")
+            .classList
+            .remove(
+              "hidden"
+            );
+
+
+          $("sendVoice")
+            .classList
+            .remove(
+              "hidden"
+            );
+
+
+          $("record")
+            .textContent =
+            "🎙️ Start recording";
+
+        };
+
+
+      recorder.start();
+
+
+      $("record")
+        .textContent =
+        "⏹ Stop recording";
+
+    }
+
+    catch (error) {
+
+      alert(
+        error.message
+      );
+
+    }
+
+  };
+
+
+/* =========================
+   SEND VOICE
+========================= */
+
+$("sendVoice")
+  .onclick =
+  async () => {
+
+    if (
+      !voiceBlob ||
+      !friend
+    )
+      return;
+
+
+    const filename =
+      myUserId +
+      "/" +
+      crypto.randomUUID() +
+      ".webm";
+
+
+    const upload =
+      await supabaseClient
+        .storage
+        .from(
+          "voice-messages"
+        )
+        .upload(
+          filename,
+          voiceBlob,
+          {
+            contentType:
+              "audio/webm"
+          }
+        );
+
+
+    if (upload.error) {
+
+      alert(
+        upload.error.message
+      );
+
+      return;
+    }
+
+
+    const {
+      error
+    } =
+      await supabaseClient
+        .from(
+          "safe_messages"
+        )
+        .insert({
+
+          sender_id:
+            myUserId,
+
+          receiver_id:
+            friend.id,
+
+          message_type:
+            "voice",
+
+          media_path:
+            filename
+
+        });
+
+
+    if (error) {
+
+      alert(
+        error.message
+      );
+
+      return;
+    }
+
+
+    voiceBlob = null;
+
+
+    $("preview")
+      .classList
+      .add(
+        "hidden"
+      );
+
+
+    $("sendVoice")
+      .classList
+      .add(
+        "hidden"
+      );
+
+  };
+
+
+/* =========================
+   VOICE CALL
+========================= */
+
+async function startCall() {
+
+  if (!friend) {
+
+    alert(
+      "Connect to a user first."
+    );
+
+    return;
+  }
+
+
+  try {
+
+    localStream =
+      await navigator
+        .mediaDevices
+        .getUserMedia({
+          audio:
+            true
+        });
+
+
+    peer =
+      new RTCPeerConnection({
+
+        iceServers: [
+          {
+            urls:
+              "stun:stun.l.google.com:19302"
+          }
+        ]
+
+      });
+
+
+    localStream
+      .getTracks()
+      .forEach(
+        track =>
+          peer.addTrack(
+            track,
+            localStream
+          )
+      );
+
+
+    peer.ontrack =
+      event => {
+
+        $("remoteAudio")
+          .srcObject =
+          event.streams[0];
+
+      };
+
+
+    peer.onicecandidate =
+      event => {
+
+        if (
+          event.candidate
+        ) {
+
+          sendCallSignal(
+            {
+              type:
+                "ice",
+
+              candidate:
+                event.candidate
+            }
+          );
+
+        }
+
+      };
+
+
+    const offer =
+      await peer
+        .createOffer();
+
+
+    await peer
+      .setLocalDescription(
+        offer
+      );
+
+
+    await sendCallSignal(
+      {
+        type:
+          "offer",
+
+        sdp:
+          offer.sdp
+      }
+    );
+
+
+    $("callStatus")
+      .textContent =
+      "Calling...";
+
+  }
+
+  catch (error) {
+
+    $("callStatus")
+      .textContent =
+      error.message;
+
+  }
+
+}
+
+
+$("call")
+  .onclick =
+  startCall;
+
+
+/* =========================
+   CALL SIGNAL
+========================= */
+
+async function sendCallSignal(
   signal
 ) {
 
-  await sb
-    .from("call_signals")
+  if (!friend)
+    return;
+
+
+  await supabaseClient
+    .from(
+      "safe_call_signals"
+    )
     .insert({
-      sender_id: me.id,
-      recipient_id: to,
-      signal
+
+      sender_id:
+        myUserId,
+
+      receiver_id:
+        friend.id,
+
+      signal:
+        signal
+
     });
 
 }
 
 
-function subscribeSignals() {
+function subscribeCalls() {
 
-  if (signalChannel) {
-    sb.removeChannel(
-      signalChannel
-    );
-  }
+  if (!supabaseClient)
+    return;
 
 
-  signalChannel =
-    sb
+  callChannel =
+    supabaseClient
       .channel(
-        "calls-" + me.id
+        "safe-calls-" +
+        myUserId
       )
       .on(
+
         "postgres_changes",
+
         {
-          event: "INSERT",
-          schema: "public",
-          table: "call_signals"
+          event:
+            "INSERT",
+
+          schema:
+            "public",
+
+          table:
+            "safe_call_signals"
         },
-        async p => {
+
+        async payload => {
+
+          const signal =
+            payload.new;
+
 
           if (
-            p.new.recipient_id ===
-            me.id
-          ) {
+            signal.receiver_id !==
+            myUserId
+          )
+            return;
 
-            await signal(
-              p.new.signal,
-              p.new.sender_id
-            );
 
-          }
+          await handleCallSignal(
+            signal.signal,
+            signal.sender_id
+          );
 
         }
+
       )
       .subscribe();
 
 }
 
 
-async function newPeer(caller) {
+async function handleCallSignal(
+  signal,
+  senderId
+) {
 
-  peer =
-    new RTCPeerConnection({
-      iceServers: [
-        {
-          urls:
-            "stun:stun.l.google.com:19302"
-        }
-      ]
-    });
+  if (
+    signal.type ===
+    "offer"
+  ) {
+
+    friend = {
+      id:
+        senderId
+    };
 
 
-  peer.onicecandidate =
-    e => {
+    if (!peer) {
 
-      if (e.candidate) {
+      localStream =
+        await navigator
+          .mediaDevices
+          .getUserMedia({
+            audio:
+              true
+          });
 
-        sendSignal(
-          friend.id,
-          {
-            type: "ice",
-            candidate:
-              e.candidate.toJSON()
-          }
+
+      peer =
+        new RTCPeerConnection({
+
+          iceServers: [
+            {
+              urls:
+                "stun:stun.l.google.com:19302"
+            }
+          ]
+
+        });
+
+
+      localStream
+        .getTracks()
+        .forEach(
+          track =>
+            peer.addTrack(
+              track,
+              localStream
+            )
         );
 
-      }
 
-    };
+      peer.ontrack =
+        event => {
 
+          $("remoteAudio")
+            .srcObject =
+            event.streams[0];
 
-  peer.ontrack =
-    e => {
-
-      $("remoteAudio").srcObject =
-        e.streams[0];
-
-    };
+        };
 
 
-  stream =
-    await navigator
-      .mediaDevices
-      .getUserMedia({
-        audio: true
+      peer.onicecandidate =
+        event => {
+
+          if (
+            event.candidate
+          ) {
+
+            sendCallSignal(
+              {
+                type:
+                  "ice",
+
+                candidate:
+                  event.candidate
+              }
+            );
+
+          }
+
+        };
+
+    }
+
+
+    await peer
+      .setRemoteDescription({
+        type:
+          "offer",
+
+        sdp:
+          signal.sdp
       });
 
 
-  stream
-    .getTracks()
-    .forEach(
-      t =>
-        peer.addTrack(
-          t,
-          stream
-        )
-    );
+    const answer =
+      await peer
+        .createAnswer();
 
 
-  if (caller) {
+    await peer
+      .setLocalDescription(
+        answer
+      );
 
-    const offer =
-      await peer.createOffer();
 
-    await peer.setLocalDescription(
-      offer
-    );
+    await supabaseClient
+      .from(
+        "safe_call_signals"
+      )
+      .insert({
 
-    await sendSignal(
-      friend.id,
-      {
-        type: "offer",
-        sdp: offer.sdp
-      }
-    );
+        sender_id:
+          myUserId,
+
+        receiver_id:
+          senderId,
+
+        signal: {
+          type:
+            "answer",
+
+          sdp:
+            answer.sdp
+        }
+
+      });
+
+
+    $("callStatus")
+      .textContent =
+      "Incoming call connected.";
+
+  }
+
+
+  else if (
+    signal.type ===
+      "answer" &&
+    peer
+  ) {
+
+    await peer
+      .setRemoteDescription({
+
+        type:
+          "answer",
+
+        sdp:
+          signal.sdp
+
+      });
+
+
+    $("callStatus")
+      .textContent =
+      "Call connected.";
+
+  }
+
+
+  else if (
+    signal.type ===
+      "ice" &&
+    peer
+  ) {
+
+    try {
+
+      await peer
+        .addIceCandidate(
+          signal.candidate
+        );
+
+    }
+
+    catch (error) {
+
+      console.error(
+        error
+      );
+
+    }
 
   }
 
 }
 
 
-async function signal(
-  s,
-  from
+/* =========================
+   END CALL
+========================= */
+
+$("hangup")
+  .onclick =
+  () => {
+
+    if (peer) {
+
+      peer.close();
+
+      peer = null;
+
+    }
+
+
+    if (localStream) {
+
+      localStream
+        .getTracks()
+        .forEach(
+          track =>
+            track.stop()
+        );
+
+      localStream = null;
+
+    }
+
+
+    $("callStatus")
+      .textContent =
+      "No active call.";
+
+  };
+
+
+/* =========================
+   COMMUNICATION TABS
+========================= */
+
+document
+  .querySelectorAll(
+    ".tab"
+  )
+  .forEach(
+    button => {
+
+      button.onclick =
+        () => {
+
+          document
+            .querySelectorAll(
+              ".tab"
+            )
+            .forEach(
+              b =>
+                b.classList
+                  .remove(
+                    "active"
+                  )
+            );
+
+
+          button
+            .classList
+            .add(
+              "active"
+            );
+
+
+          document
+            .querySelectorAll(
+              ".panel"
+            )
+            .forEach(
+              panel =>
+                panel.classList
+                  .add(
+                    "hidden"
+                  )
+            );
+
+
+          $(
+            button.dataset.tab +
+            "Panel"
+          )
+            .classList
+            .remove(
+              "hidden"
+            );
+
+        };
+
+    }
+  );
+
+
+/* =========================
+   ROUTE ADVISORY
+========================= */
+
+async function geocode(
+  query
 ) {
 
-  if (!friend) {
-    friend = {
-      id: from
-    };
-  }
-
-
-  if (s.type === "offer") {
-
-    if (!peer) {
-      await newPeer(false);
-    }
-
-    await peer.setRemoteDescription({
-      type: "offer",
-      sdp: s.sdp
-    });
-
-
-    const answer =
-      await peer.createAnswer();
-
-    await peer.setLocalDescription(
-      answer
-    );
-
-
-    await sendSignal(
-      from,
-      {
-        type: "answer",
-        sdp: answer.sdp
-      }
-    );
-
-
-    $("callStatus").textContent =
-      "Call connected";
-
-  }
-
-
-  else if (
-    s.type === "answer" &&
-    peer
-  ) {
-
-    await peer.setRemoteDescription({
-      type: "answer",
-      sdp: s.sdp
-    });
-
-  }
-
-
-  else if (
-    s.type === "ice" &&
-    peer
-  ) {
-
-    try {
-
-      await peer.addIceCandidate(
-        s.candidate
-      );
-
-    }
-
-    catch (e) {}
-
-  }
-
-}
-
-
-$("call").onclick =
-  async () => {
-
-    if (!me) {
-      return authModal();
-    }
-
-    if (!friend) {
-      return alert(
-        "Open a chat first."
-      );
-    }
-
-    try {
-
-      $("callStatus").textContent =
-        "Calling…";
-
-      await newPeer(true);
-
-    }
-
-    catch (e) {
-
-      $("callStatus").textContent =
-        e.message;
-
-    }
-
-  };
-
-
-$("hangup").onclick = () => {
-
-  if (peer) {
-    peer.close();
-  }
-
-  peer = null;
-
-
-  if (stream) {
-
-    stream
-      .getTracks()
-      .forEach(
-        t => t.stop()
-      );
-
-  }
-
-  stream = null;
-
-  $("callStatus").textContent =
-    "No active call";
-
-};
-
-
-/* =========================
-   DESTINATION SEARCH
-========================= */
-
-async function geocode(q) {
-
-  const r =
+  const response =
     await fetch(
       "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" +
-      encodeURIComponent(q)
+      encodeURIComponent(
+        query
+      )
     );
 
-  const d =
-    await r.json();
 
-  if (!d.length) {
-    throw Error(
-      "Destination not found"
+  const results =
+    await response.json();
+
+
+  if (!results.length) {
+
+    throw new Error(
+      "Destination not found."
     );
+
   }
 
+
   return {
-    lat: +d[0].lat,
-    lon: +d[0].lon,
-    name: d[0].display_name
+
+    lat:
+      Number(
+        results[0].lat
+      ),
+
+    lon:
+      Number(
+        results[0].lon
+      ),
+
+    name:
+      results[0]
+        .display_name
+
   };
 
 }
 
 
-/* =========================
-   ROUTE
-========================= */
-
-$("route").onclick =
+$("route")
+  .onclick =
   async () => {
 
-    if (!pos) {
+    if (!myPosition) {
 
       locate();
 
@@ -1272,179 +1720,255 @@ $("route").onclick =
     }
 
 
-    const q =
-      $("destination").value.trim();
+    const destination =
+      $("destination")
+        .value
+        .trim();
 
-    if (!q) return;
+
+    if (!destination)
+      return;
 
 
-    badge(
-      "routeState",
-      "Planning…",
-      "warn"
-    );
+    $("routeState")
+      .textContent =
+      "Planning...";
 
 
     try {
 
-      const d =
-        await geocode(q);
-
-
-      const r =
-        await fetch(
-          `https://router.project-osrm.org/route/v1/driving/${pos.lon},${pos.lat};${d.lon},${d.lat}?overview=full&geometries=geojson`
+      const place =
+        await geocode(
+          destination
         );
 
 
-      const j =
-        await r.json();
+      const response =
+        await fetch(
+          `https://router.project-osrm.org/route/v1/driving/${myPosition.lon},${myPosition.lat};${place.lon},${place.lat}?overview=full&geometries=geojson`
+        );
 
 
-      const rt =
-        j.routes[0];
+      const data =
+        await response.json();
+
+
+      const route =
+        data.routes[0];
 
 
       if (routeLayer) {
+
         map.removeLayer(
           routeLayer
         );
+
       }
 
 
       routeLayer =
         L.geoJSON(
-          rt.geometry,
+          route.geometry,
           {
             style: {
-              color: "#55a5ff",
-              weight: 6
+              color:
+                "#55a5ff",
+
+              weight:
+                6
             }
           }
-        ).addTo(map);
+        )
+        .addTo(map);
 
 
       map.fitBounds(
         routeLayer.getBounds(),
         {
-          padding: [
-            25,
-            25
-          ]
+          padding:
+            [25, 25]
         }
       );
 
 
-      const kmv =
-        rt.distance / 1000;
+      const km =
+        route.distance /
+        1000;
 
-      const min =
+
+      const minutes =
         Math.round(
-          rt.duration / 60
+          route.duration /
+          60
         );
 
 
-      $("routeInfo").innerHTML =
+      $("routeInfo")
+        .innerHTML =
 
         `<div class="stats">
+
           <div class="stat">
-            <b>${kmv.toFixed(1)} km</b>
-            <span>distance</span>
+            <b>
+              ${km.toFixed(1)} km
+            </b>
+            <span>
+              Distance
+            </span>
           </div>
 
           <div class="stat">
-            <b>${
-              min < 60
-                ? min + " min"
-                : Math.floor(min / 60) +
-                  " hr " +
-                  min % 60 +
-                  " min"
-            }</b>
-            <span>estimated drive time</span>
+            <b>
+              ${
+                minutes < 60
+                  ? minutes +
+                    " min"
+                  : Math.floor(
+                      minutes / 60
+                    ) +
+                    " hr " +
+                    (
+                      minutes % 60
+                    ) +
+                    " min"
+              }
+            </b>
+
+            <span>
+              Estimated drive time
+            </span>
           </div>
+
         </div>
 
         <div class="advice">
-          <b>Advisory:</b>
-          Check nearby fuel, public transport,
-          ATM and emergency services before travelling.
+
+          <b>
+            Route Advisory:
+          </b>
+
+          Check fuel,
+          public transport,
+          ATM and emergency
+          services before travelling.
+
         </div>`;
 
 
-      badge(
-        "routeState",
-        "Ready",
-        "ok"
-      );
+      $("routeState")
+        .textContent =
+        "Ready";
+
 
     }
 
-    catch (e) {
+    catch (error) {
 
-      $("routeInfo").textContent =
-        e.message;
+      $("routeInfo")
+        .textContent =
+        error.message;
 
-      badge(
-        "routeState",
-        "Error",
-        "warn"
-      );
+      $("routeState")
+        .textContent =
+        "Error";
 
     }
 
   };
 
 
-$("destination")
-  .addEventListener(
-    "keydown",
-    e => {
-
-      if (e.key === "Enter") {
-        $("route").click();
-      }
-
-    }
-  );
-
-
 /* =========================
-   NEARBY SERVICES
+   NEARBY
 ========================= */
 
-const kinds = {
+const nearbyTypes = {
 
-  metro: [
-    "🚇",
-    "Metro",
-    `["railway"="station"]["station"="subway"]`
-  ],
+  metro:
+    [
+      "🚇",
+      "Metro",
+      `["railway"="station"]["station"="subway"]`
+    ],
 
-  bus: [
-    "🚌",
-    "Bus",
-    `["highway"="bus_stop"]`
-  ],
+  bus:
+    [
+      "🚌",
+      "Bus",
+      `["highway"="bus_stop"]`
+    ],
 
-  fuel: [
-    "⛽",
-    "Fuel",
-    `["amenity"="fuel"]`
-  ],
+  fuel:
+    [
+      "⛽",
+      "Fuel",
+      `["amenity"="fuel"]`
+    ],
 
-  atm: [
-    "🏧",
-    "ATM",
-    `["amenity"="atm"]`
-  ]
+  atm:
+    [
+      "🏧",
+      "ATM",
+      `["amenity"="atm"]`
+    ]
 
 };
 
 
-async function nearby(k) {
+function calculateDistance(
+  a,
+  b
+) {
 
-  if (!pos) {
+  const R =
+    6371;
+
+
+  const dLat =
+    (b.lat - a.lat) *
+    Math.PI / 180;
+
+
+  const dLon =
+    (b.lon - a.lon) *
+    Math.PI / 180;
+
+
+  const x =
+    Math.sin(
+      dLat / 2
+    ) ** 2 +
+
+    Math.cos(
+      a.lat *
+      Math.PI / 180
+    ) *
+
+    Math.cos(
+      b.lat *
+      Math.PI / 180
+    ) *
+
+    Math.sin(
+      dLon / 2
+    ) ** 2;
+
+
+  return (
+    2 *
+    R *
+    Math.asin(
+      Math.sqrt(x)
+    )
+  );
+
+}
+
+
+async function findNearby(
+  type
+) {
+
+  if (!myPosition) {
 
     locate();
 
@@ -1453,140 +1977,196 @@ async function nearby(k) {
 
 
   const [
-    emoji,
-    label,
-    q
-  ] = kinds[k];
+    icon,
+    name,
+    filter
+  ] =
+    nearbyTypes[type];
 
 
-  $("nearbyResults").textContent =
-    "Searching…";
+  $("nearbyResults")
+    .textContent =
+    "Searching...";
 
 
   const query =
     `[out:json][timeout:15];
+
     (
-      node(around:3000,${pos.lat},${pos.lon})${q};
-      way(around:3000,${pos.lat},${pos.lon})${q};
+      node(
+        around:3000,
+        ${myPosition.lat},
+        ${myPosition.lon}
+      )
+      ${filter};
+
+      way(
+        around:3000,
+        ${myPosition.lat},
+        ${myPosition.lon}
+      )
+      ${filter};
     );
+
     out center tags;`;
 
 
   try {
 
-    const r =
+    const response =
       await fetch(
         "https://overpass-api.de/api/interpreter",
         {
-          method: "POST",
-          body: query
+          method:
+            "POST",
+
+          body:
+            query
         }
       );
 
 
-    const j =
-      await r.json();
+    const data =
+      await response.json();
 
 
-    nearbyLayer.clearLayers();
+    nearbyLayer
+      .clearLayers();
 
 
-    const arr =
-      j.elements
-        .map(x => {
+    const places =
+      data.elements
+        .map(
+          element => {
 
-          const lat =
-            x.lat ??
-            x.center?.lat;
-
-          const lon =
-            x.lon ??
-            x.center?.lon;
-
-          const t =
-            x.tags || {};
+            const lat =
+              element.lat ||
+              element.center?.lat;
 
 
-          return {
-            lat,
-            lon,
-            name:
-              t.name ||
-              t.brand ||
-              label,
+            const lon =
+              element.lon ||
+              element.center?.lon;
 
-            d:
-              distance(
-                pos,
-                {
-                  lat,
-                  lon
-                }
-              )
-          };
 
-        })
+            const tags =
+              element.tags ||
+              {};
+
+
+            return {
+
+              lat,
+
+              lon,
+
+              name:
+                tags.name ||
+                tags.brand ||
+                name,
+
+              distance:
+                calculateDistance(
+                  myPosition,
+                  {
+                    lat,
+                    lon
+                  }
+                )
+
+            };
+
+          }
+        )
         .filter(
-          x =>
-            Number.isFinite(x.lat) &&
-            Number.isFinite(x.lon)
+          place =>
+            Number.isFinite(
+              place.lat
+            ) &&
+            Number.isFinite(
+              place.lon
+            )
         )
         .sort(
           (a, b) =>
-            a.d - b.d
+            a.distance -
+            b.distance
         )
-        .slice(0, 12);
+        .slice(
+          0,
+          10
+        );
 
 
-    $("nearbyResults").innerHTML =
-      arr.length
+    if (!places.length) {
 
-        ? arr
-            .map(
-              (x, i) =>
-                `<div class="place">
-                  <div>
-                    <b>
-                      ${emoji}
-                      ${esc(x.name)}
-                    </b>
+      $("nearbyResults")
+        .textContent =
+        "No nearby results found.";
 
-                    <small>
-                      ${
-                        x.d < 1
-                          ? Math.round(
-                              x.d * 1000
-                            ) + " m"
-                          : x.d.toFixed(1) +
-                            " km"
-                      }
-                    </small>
-                  </div>
+      return;
 
-                  <button
-                    data-i="${i}">
-                    Show
-                  </button>
-                </div>`
-            )
-            .join("")
-
-        : "No results within about 3 km.";
+    }
 
 
-    arr.forEach(
-      x => {
+    $("nearbyResults")
+      .innerHTML =
+      places
+        .map(
+          (place, index) =>
+
+            `<div class="place">
+
+              <div>
+
+                <b>
+                  ${icon}
+                  ${place.name}
+                </b>
+
+                <small>
+                  ${
+                    place.distance < 1
+
+                      ? Math.round(
+                          place.distance *
+                          1000
+                        ) +
+                        " m"
+
+                      : place.distance
+                          .toFixed(1) +
+                        " km"
+                  }
+                </small>
+
+              </div>
+
+              <button
+                data-index="${index}"
+              >
+                Show
+              </button>
+
+            </div>`
+
+        )
+        .join("");
+
+
+    places.forEach(
+      place => {
 
         nearbyLayer.addLayer(
+
           L.marker([
-            x.lat,
-            x.lon
+            place.lat,
+            place.lon
           ])
-            .bindPopup(
-              "<b>" +
-              esc(x.name) +
-              "</b>"
-            )
+          .bindPopup(
+            place.name
+          )
+
         );
 
       }
@@ -1594,36 +2174,43 @@ async function nearby(k) {
 
 
     $("nearbyResults")
-      .querySelectorAll("button")
+      .querySelectorAll(
+        "button"
+      )
       .forEach(
-        b => {
+        button => {
 
-          b.onclick = () => {
+          button.onclick =
+            () => {
 
-            const x =
-              arr[
-                +b.dataset.i
-              ];
+              const place =
+                places[
+                  Number(
+                    button.dataset.index
+                  )
+                ];
 
-            map.setView(
-              [
-                x.lat,
-                x.lon
-              ],
-              17
-            );
 
-          };
+              map.setView(
+                [
+                  place.lat,
+                  place.lon
+                ],
+                17
+              );
+
+            };
 
         }
       );
 
   }
 
-  catch (e) {
+  catch (error) {
 
-    $("nearbyResults").textContent =
-      "Nearby search failed. Try again.";
+    $("nearbyResults")
+      .textContent =
+      "Nearby search failed.";
 
   }
 
@@ -1635,55 +2222,66 @@ document
     ".nearby button"
   )
   .forEach(
-    b => {
+    button => {
 
-      b.onclick = () => {
+      button.onclick =
+        () => {
 
-        document
-          .querySelectorAll(
-            ".nearby button"
-          )
-          .forEach(
-            x =>
-              x.classList
-                .remove("active")
+          document
+            .querySelectorAll(
+              ".nearby button"
+            )
+            .forEach(
+              b =>
+                b.classList
+                  .remove(
+                    "active"
+                  )
+            );
+
+
+          button
+            .classList
+            .add(
+              "active"
+            );
+
+
+          findNearby(
+            button.dataset.kind
           );
 
-
-        b.classList.add(
-          "active"
-        );
-
-
-        nearby(
-          b.dataset.kind
-        );
-
-      };
+        };
 
     }
   );
 
 
-$("refresh").onclick = () => {
+$("refresh")
+  .onclick =
+  () => {
 
-  const b =
-    document.querySelector(
-      ".nearby button.active"
-    );
+    const active =
+      document.querySelector(
+        ".nearby button.active"
+      );
 
-  if (b) {
-    nearby(
-      b.dataset.kind
-    );
-  }
 
-};
+    if (active) {
+
+      findNearby(
+        active.dataset.kind
+      );
+
+    }
+
+  };
 
 
 /* =========================
    START
 ========================= */
 
-init();
 locate();
+
+registerSafeId();
