@@ -1,3 +1,18 @@
+
+// interval
+setInterval(() => {
+
+  if (
+    friend &&
+    supabaseClient
+  ) {
+    loadMessages();
+  }
+
+}, 3000);
+
+//checkcheck
+
 const CONFIG =
   window.SAFE_ROUTE_CONFIG || {};
 
@@ -614,88 +629,56 @@ async function connectToUser() {
 /* =========================
    MESSAGES
 ========================= */
-
 async function sendMessage() {
 
   if (!friend) {
-
-    alert(
-      "Connect to a Safe Route user first."
-    );
-
+    alert("Connect to a Safe Route user first.");
     return;
   }
 
-
   const message =
-    $("message")
-      .value
-      .trim();
+    $("message").value.trim();
 
-
-  if (!message)
-    return;
-
+  if (!message) return;
 
   const {
+    data,
     error
-  } =
-    await supabaseClient
-      .from("safe_messages")
-      .insert({
-
-        sender_id:
-          myUserId,
-
-        receiver_id:
-          friend.id,
-
-        message_type:
-          "text",
-
-        content:
-          message
-
-      });
-
+  } = await supabaseClient
+    .from("safe_messages")
+    .insert({
+      sender_id: myUserId,
+      receiver_id: friend.id,
+      message_type: "text",
+      content: message
+    })
+    .select()
+    .single();
 
   if (error) {
 
-    alert(
-      error.message
+    console.error(
+      "Send message error:",
+      error
     );
 
+    alert(error.message);
     return;
   }
 
+  console.log(
+    "MESSAGE SENT:",
+    data
+  );
 
-  $("message")
-    .value = "";
-await loadMessages();
+  $("message").value = "";
+
+  // Immediately refresh this conversation
+  await loadMessages();
 }
 
 
-$("send")
-  .onclick =
-  sendMessage;
 
-
-$("message")
-  .addEventListener(
-    "keydown",
-    event => {
-
-      if (
-        event.key ===
-        "Enter"
-      ) {
-
-        sendMessage();
-
-      }
-
-    }
-  );
 
 
 /* =========================
@@ -837,12 +820,19 @@ function subscribeMessages() {
   if (!supabaseClient) return;
 
   if (messageChannel) {
-    supabaseClient.removeChannel(messageChannel);
+    supabaseClient.removeChannel(
+      messageChannel
+    );
   }
 
   messageChannel =
     supabaseClient
-      .channel("safe-messages-" + myUserId + "-" + Date.now())
+      .channel(
+        "messages-" +
+        myUserId +
+        "-" +
+        Date.now()
+      )
       .on(
         "postgres_changes",
         {
@@ -850,40 +840,38 @@ function subscribeMessages() {
           schema: "public",
           table: "safe_messages"
         },
-        async payload => {
+        payload => {
 
-          const message = payload.new;
+          console.log(
+            "NEW MESSAGE RECEIVED:",
+            payload.new
+          );
+
+          const message =
+            payload.new;
 
           if (
-            message.sender_id === myUserId ||
-            message.receiver_id === myUserId
+            message.receiver_id === myUserId ||
+            message.sender_id === myUserId
           ) {
 
-            await loadMessages();
+            loadMessages();
 
           }
 
         }
       )
-      .subscribe(status => {
+      .subscribe(
+        status => {
 
-        console.log(
-          "Safe Messages Realtime:",
-          status
-        );
+          console.log(
+            "MESSAGE REALTIME STATUS:",
+            status
+          );
 
-      });
-
+        }
+      );
 }
-
-
-setInterval(() => {
-
-  if (friend && supabaseClient) {
-    loadMessages();
-  }
-
-}, 3000);
 
 
 /* =========================
