@@ -1273,24 +1273,22 @@ async function loadMessages() {
 /* =========================================================
    DISPLAY MESSAGE
 ========================================================= */
+/* =========================
+   DISPLAY MESSAGE
+========================= */
 
-function displayMessage(
-  message
-) {
+async function displayMessage(message) {
 
   const div =
-    document.createElement(
-      "div"
-    );
+    document.createElement("div");
 
 
   /*
-    Correctly identify sender.
+    Correctly identify sender
   */
 
   const isMine =
-    message.sender_id ===
-    myUserId;
+    message.sender_id === myUserId;
 
 
   div.className =
@@ -1302,15 +1300,16 @@ function displayMessage(
     );
 
 
+  /* =========================
+     LOCATION
+  ========================= */
+
   if (
-    message.message_type ===
-    "location"
+    message.message_type === "location"
   ) {
 
     const link =
-      document.createElement(
-        "a"
-      );
+      document.createElement("a");
 
 
     link.href =
@@ -1329,70 +1328,163 @@ function displayMessage(
       "📍 Shared location";
 
 
-    div.appendChild(
-      link
-    );
+    div.appendChild(link);
 
   }
 
+
+  /* =========================
+     VOICE
+  ========================= */
+
   else if (
-    message.message_type ===
-    "voice"
+    message.message_type === "voice"
   ) {
 
-    const audio =
-      document.createElement(
-        "audio"
-      );
+    const title =
+      document.createElement("div");
 
 
-    audio.controls =
-      true;
+    title.textContent =
+      "🎙️ Voice message";
 
 
-    audio.className =
-      "audio";
+    title.style.fontWeight =
+      "700";
 
 
-    /*
-      Voice storage handling can be
-      added after text communication
-      is confirmed.
-    */
+    title.style.marginBottom =
+      "6px";
 
-    if (message.media_path) {
+
+    div.appendChild(title);
+
+
+    if (
+      message.media_path &&
+      supabaseClient
+    ) {
+
+      const audio =
+        document.createElement("audio");
+
+
+      audio.controls =
+        true;
+
+
+      audio.preload =
+        "metadata";
+
+
+      audio.className =
+        "audio";
+
+
+      audio.style.width =
+        "100%";
+
+
+      /*
+        Create a temporary signed URL.
+        This works even when the bucket
+        is private.
+      */
 
       const {
-        data
+        data,
+        error
       } =
-        supabaseClient
+        await supabaseClient
           .storage
-          .from(
-            "voice-messages"
-          )
-          .getPublicUrl(
-            message.media_path
+          .from("voice-messages")
+          .createSignedUrl(
+            message.media_path,
+            3600
           );
 
 
-      if (
+      if (error) {
+
+        console.error(
+          "VOICE URL ERROR:",
+          error
+        );
+
+
+        const errorText =
+          document.createElement("div");
+
+
+        errorText.textContent =
+          "⚠️ Voice unavailable";
+
+
+        errorText.style.fontSize =
+          "11px";
+
+
+        errorText.style.color =
+          "#ff9da8";
+
+
+        div.appendChild(
+          errorText
+        );
+
+      }
+
+      else if (
         data &&
-        data.publicUrl
+        data.signedUrl
       ) {
 
         audio.src =
-          data.publicUrl;
+          data.signedUrl;
+
+
+        /*
+          Browser reads the actual
+          duration from the audio file.
+        */
+
+        audio.onloadedmetadata =
+          () => {
+
+            console.log(
+              "VOICE DURATION:",
+              audio.duration,
+              "seconds"
+            );
+
+          };
+
+
+        audio.onerror =
+          event => {
+
+            console.error(
+              "AUDIO PLAY ERROR:",
+              event
+            );
+
+          };
+
+
+        div.appendChild(
+          audio
+        );
 
       }
 
     }
 
-
-    div.appendChild(
-      audio
-    );
-
   }
+
+
+  /* =========================
+     TEXT
+  ========================= */
 
   else {
 
@@ -1403,14 +1495,12 @@ function displayMessage(
   }
 
 
-  /*
-    Add time.
-  */
+  /* =========================
+     TIME
+  ========================= */
 
   const time =
-    document.createElement(
-      "time"
-    );
+    document.createElement("time");
 
 
   const date =
@@ -1438,9 +1528,7 @@ function displayMessage(
 
 
   $("messages")
-    .appendChild(
-      div
-    );
+    .appendChild(div);
 
 
   console.log(
@@ -1448,6 +1536,9 @@ function displayMessage(
     {
       id:
         message.id,
+
+      type:
+        message.message_type,
 
       sender:
         message.sender_id,
@@ -1458,12 +1549,18 @@ function displayMessage(
       mine:
         isMine,
 
+      media:
+        message.media_path,
+
       content:
         message.content
     }
   );
 
 }
+
+  
+
 
 
 /* =========================================================
